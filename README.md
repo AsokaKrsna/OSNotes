@@ -32,7 +32,8 @@ OSNotes is a refusal to that.
 
 So I started building. The annotation engine (the heart of OSNotes) began as part of my other project, [OSPdfReader](https://github.com/AsokaKrsna/OSPdfReader). I realized this engine could power something bigger: a note-taking app that puts **you** back in control. We already had the foundation, needed some polish and wrapper functions. 
 
-OSNotes also believe on customiztion and you will feel that while using the powerful template bulder. The tools are yours, create what you can dream of, create what you are in need of. 
+OSNotes also believe on the freedom of customiztion and you will feel that while using the app specially the powerful template bulder. The tools are yours, create what you can dream of, create what you are in need of. 
+
 ---
 
 ## 💡 Philosophy
@@ -179,8 +180,7 @@ See [SECURITY.md](SECURITY.md) for details.
 OSNotes is released under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
 
 This means:
-- ✅ You can use, modify, and distribute this software
-- ✅ You can use it for commercial purposes
+- We hardly oppose monetization of the tool and any part of it
 - ⚠️ If you modify and distribute it, you must open-source your changes under AGPL-3.0
 - ⚠️ If you run a modified version on a server, you must make the source available to users
 
@@ -188,7 +188,7 @@ See the [LICENSE](LICENSE) file for the full license text.
 
 ## 🙏 Acknowledgments
 
-- **Annotation Engine**: Born from [OSPdfReader](https://github.com/nicholasng1998/ospdf-reader)—the engine that started it all
+- **Annotation Engine**: Born from [OSPdfReader](https://github.com/AsokaKrsna/OSPdfReader)-the engine that born with a purpose
 - **MuPDF Team**: For the incredible PDF library that makes this possible
 - **Android Community**: For the amazing open-source ecosystem
 - **Contributors**: Everyone who helps make OSNotes better
@@ -212,7 +212,9 @@ Because your creativity deserves freedom.
 **Made with ❤️ by a frustrated student for the community. Mostly vibe coded using Kiro, Antigravity and Github copilot (Was exploring different tools and models to understand them better and figure out a better way to develop faster and secure while miniizing token usage)**
 
 [Report Bug](https://github.com/AsokaKrsna/OSNotes/issues)
+
 [Request Feature](https://github.com/AsokaKrsna/OSNotes/issues)
+
 [Discussions](https://github.com/AsokaKrsna/OSNotes/discussions)
 
 ### THANKS FOR SUPPORTING THE INITIATIVE
