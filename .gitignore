@@ -112,3 +112,5 @@ app/release/baselineProfiles/
 
 # Output metadata
 app/release/output-metadata.json
+
+.vscode/
