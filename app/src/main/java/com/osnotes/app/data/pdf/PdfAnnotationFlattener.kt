@@ -220,25 +220,22 @@ class PdfAnnotationFlattener @Inject constructor(
                                 }
                             }
                             
-                            // Create PDF page at STANDARD size (595x842) to match original PDF dimensions
-                            // The bitmap will be scaled down to fit
+                            // Create PDF page at BITMAP resolution to avoid quality-destroying downscale.
+                            // Android's PdfDocument is 72 DPI (1 point = 1 pixel), so creating
+                            // the page at bitmap size means the bitmap is drawn 1:1 — no quality loss.
+                            // The isAlreadyScaled detection handles these larger pages on reopen.
                             val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(
-                                standardPageWidth.toInt(),
-                                standardPageHeight.toInt(),
+                                actualBitmapWidth,
+                                actualBitmapHeight,
                                 pageIndex + 1
                             ).create()
                             
                             val pdfPage = pdfDocument.startPage(pageInfo)
                             
-                            android.util.Log.d("PdfAnnotationFlattener", "Creating PDF page: ${standardPageWidth.toInt()}x${standardPageHeight.toInt()}, Bitmap: ${actualBitmapWidth}x${actualBitmapHeight}")
+                            android.util.Log.d("PdfAnnotationFlattener", "Creating PDF page at bitmap resolution: ${actualBitmapWidth}x${actualBitmapHeight}")
                             
-                            // Scale bitmap down to standard page size with high-quality filtering
-                            val destRect = android.graphics.Rect(0, 0, standardPageWidth.toInt(), standardPageHeight.toInt())
-                            val scalePaint = Paint().apply {
-                                isFilterBitmap = true  // Bilinear filtering for smooth downscale
-                                isAntiAlias = true
-                            }
-                            pdfPage.canvas.drawBitmap(bitmap, null, destRect, scalePaint)
+                            // Draw bitmap 1:1 — no scaling, no quality loss
+                            pdfPage.canvas.drawBitmap(bitmap, 0f, 0f, null)
                             
                             pdfDocument.finishPage(pdfPage)
                             

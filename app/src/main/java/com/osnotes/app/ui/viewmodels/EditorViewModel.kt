@@ -1290,60 +1290,28 @@ class EditorViewModel @Inject constructor(
                 val textsByPage = pageTexts.mapValues { it.value.value }
                     .filter { it.value.isNotEmpty() }
                 
-                // Convert EditorModels.ShapeAnnotation to ShapeTools.ShapeAnnotation
-                // for the AnnotationManager's vector path
-                val toolShapesByPage = shapesByPage.mapValues { (_, shapes) ->
-                    shapes.map { shape ->
-                        com.osnotes.app.ui.tools.ShapeAnnotation(
-                            id = shape.id,
-                            type = shape.shapeType,
-                            startX = shape.startPoint.x,
-                            startY = shape.startPoint.y,
-                            endX = shape.endPoint.x,
-                            endY = shape.endPoint.y,
-                            color = shape.color,
-                            strokeWidth = shape.strokeWidth,
-                            isFilled = shape.filled,
-                            pageNumber = shape.pageNumber
-                        )
-                    }
-                }
+                val hasAnnotations = strokesByPage.isNotEmpty() || shapesByPage.isNotEmpty() || textsByPage.isNotEmpty()
                 
-                // Use vector-based path via AnnotationManager — lossless quality
-                // Writes strokes/shapes as native PDF path operators (no bitmap rasterization)
-                val hasStrokesOrShapes = strokesByPage.isNotEmpty() || toolShapesByPage.isNotEmpty()
-                
-                if (hasStrokesOrShapes) {
-                    val result = annotationManager.saveAnnotationsToOriginalFile(
-                        originalUri = uri,
-                        sourcePath = "",  // Not used — reads from URI directly
-                        strokes = strokesByPage,
-                        shapes = toolShapesByPage,
-                        bakeAnnotations = true  // Write as permanent vector content
-                    )
-                    
-                    result.getOrThrow()
-                }
-                
-                // Handle text annotations separately via bitmap flattening
-                // (text needs font rendering which requires rasterization)
-                if (textsByPage.isNotEmpty()) {
-                    val textResult = pdfFlattener.flattenAnnotations(
+                if (hasAnnotations) {
+                    // Flatten all annotations into the PDF using bitmap compositing.
+                    // Must use RENDER_SCALE (2f) because stroke coordinates are stored
+                    // in canvas space at this scale — the bitmap must match.
+                    val result = pdfFlattener.flattenAnnotations(
                         sourceUri = uri,
-                        strokes = emptyMap(),  // Already baked as vectors
-                        shapes = emptyMap(),
+                        strokes = strokesByPage,
+                        shapes = shapesByPage,
                         textAnnotations = textsByPage,
                         replaceOriginal = true,
                         renderScale = RENDER_SCALE
                     )
                     
-                    if (textResult is PdfAnnotationFlattener.FlattenResult.Error) {
-                        android.util.Log.w("EditorViewModel", "Text flattening failed: ${textResult.message}")
+                    if (result is PdfAnnotationFlattener.FlattenResult.Error) {
+                        throw Exception(result.message)
                     }
+                    
+                    // Reopen the document to pick up changes
+                    pdfRenderer.openDocument(uri)
                 }
-                
-                // Reopen the document to pick up changes
-                pdfRenderer.openDocument(uri)
                 
                 // Clear local annotations and database
                 val documentPath = _uiState.value.documentPath
