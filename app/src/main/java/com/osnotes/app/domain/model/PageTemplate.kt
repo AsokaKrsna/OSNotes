@@ -361,11 +361,13 @@ data class CustomTemplate(
     val hasHeader: Boolean = false,
     val headerHeight: Float = 60f,
     val headerColor: Int = 0xFFF0F0F5.toInt(),
+    val headerText: String = "",
     
     // Footer section
     val hasFooter: Boolean = false,
     val footerHeight: Float = 50f,
     val footerColor: Int = 0xFFF0F0F5.toInt(),
+    val footerText: String = "",
     
     // Side column (Cornell-style)
     val hasSideColumn: Boolean = false,

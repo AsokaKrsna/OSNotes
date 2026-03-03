@@ -741,12 +741,21 @@ class MuPdfRenderer @Inject constructor(
         customTemplate: com.osnotes.app.domain.model.CustomTemplate
     ) = withContext(Dispatchers.IO) {
         try {
+            android.util.Log.d("MuPdfRenderer", "Creating custom template PDF: name=${customTemplate.name}, headerText='${customTemplate.headerText}', footerText='${customTemplate.footerText}'")
             val pdfBytes = createCustomTemplatePdfBytes(width, height, customTemplate)
+            android.util.Log.d("MuPdfRenderer", "Generated ${pdfBytes.size} bytes of PDF")
             
-            context.contentResolver.openOutputStream(uri)?.use { output ->
-                output.write(pdfBytes)
+            // Write PDF bytes - use direct file I/O for file:// URIs
+            if (uri.scheme == "file" || uri.scheme == null) {
+                val path = uri.path ?: uri.toString()
+                java.io.File(path).writeBytes(pdfBytes)
+            } else {
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(pdfBytes)
+                }
             }
         } catch (e: Exception) {
+            android.util.Log.e("MuPdfRenderer", "Error creating custom template PDF", e)
             e.printStackTrace()
         }
     }
@@ -1039,7 +1048,52 @@ class MuPdfRenderer @Inject constructor(
             }
         }
         
-        return createPdfWithContent(width, height, content.toString())
+        // Header text
+        if (template.hasHeader && template.headerText.isNotBlank()) {
+            android.util.Log.d("MuPdfRenderer", "Adding header text: '${template.headerText}'")
+            val textStr = template.headerText
+                .replace("\\", "\\\\")
+                .replace("(", "\\(")
+                .replace(")", "\\)")
+            val fontSize = 10f
+            // Center text: estimate width as ~0.5 * fontSize per character
+            val estTextWidth = textStr.length * fontSize * 0.5f
+            val textX = String.format("%.2f", (width - estTextWidth) / 2f)
+            val textY = String.format("%.2f", height - template.headerHeight / 2f - fontSize / 3f)
+            content.append("q\n")
+            content.append("0.3 0.3 0.3 rg\n")
+            content.append("BT\n")
+            content.append("/F1 $fontSize Tf\n")
+            content.append("$textX $textY Td\n")
+            content.append("($textStr) Tj\n")
+            content.append("ET\n")
+            content.append("Q\n")
+        }
+        
+        // Footer text
+        if (template.hasFooter && template.footerText.isNotBlank()) {
+            android.util.Log.d("MuPdfRenderer", "Adding footer text: '${template.footerText}'")
+            val textStr = template.footerText
+                .replace("\\", "\\\\")
+                .replace("(", "\\(")
+                .replace(")", "\\)")
+            val fontSize = 10f
+            val estTextWidth = textStr.length * fontSize * 0.5f
+            val textX = String.format("%.2f", (width - estTextWidth) / 2f)
+            val textY = String.format("%.2f", template.footerHeight / 2f - fontSize / 3f)
+            content.append("q\n")
+            content.append("0.3 0.3 0.3 rg\n")
+            content.append("BT\n")
+            content.append("/F1 $fontSize Tf\n")
+            content.append("$textX $textY Td\n")
+            content.append("($textStr) Tj\n")
+            content.append("ET\n")
+            content.append("Q\n")
+        }
+        
+        val needsFont = template.headerText.isNotBlank() || template.footerText.isNotBlank()
+        android.util.Log.d("MuPdfRenderer", "needsFont=$needsFont, content length=${content.length}")
+        return createPdfWithContent(width, height, content.toString(), needsFont)
     }
     
     /**
@@ -1407,7 +1461,7 @@ class MuPdfRenderer @Inject constructor(
      * Helper to create a PDF with given content stream.
      * Uses proper dynamic xref offset calculation.
      */
-    private fun createPdfWithContent(width: Float, height: Float, content: String): ByteArray {
+    private fun createPdfWithContent(width: Float, height: Float, content: String, needsFont: Boolean = false): ByteArray {
         val w = width.toInt()
         val h = height.toInt()
         val contentBytes = content.toByteArray(Charsets.US_ASCII)
@@ -1428,9 +1482,13 @@ class MuPdfRenderer @Inject constructor(
         val obj2Offset = pdf.length
         pdf.append("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n")
         
-        // Object 3: Page
+        // Object 3: Page (with font resource if needed)
         val obj3Offset = pdf.length
-        pdf.append("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $w $h] /Contents 4 0 R /Resources << >> >>\nendobj\n")
+        if (needsFont) {
+            pdf.append("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $w $h] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n")
+        } else {
+            pdf.append("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $w $h] /Contents 4 0 R /Resources << >> >>\nendobj\n")
+        }
         
         // Object 4: Content stream
         val obj4Offset = pdf.length
@@ -1438,18 +1496,30 @@ class MuPdfRenderer @Inject constructor(
         pdf.append(content)
         pdf.append("\nendstream\nendobj\n")
         
+        // Object 5: Font (Helvetica - built-in base-14 font, no embedding needed)
+        val obj5Offset = if (needsFont) {
+            val offset = pdf.length
+            pdf.append("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n")
+            offset
+        } else -1
+        
+        val objectCount = if (needsFont) 6 else 5
+        
         // XRef table
         val xrefOffset = pdf.length
         pdf.append("xref\n")
-        pdf.append("0 5\n")
+        pdf.append("0 $objectCount\n")
         pdf.append("0000000000 65535 f \n")
         pdf.append(String.format("%010d 00000 n \n", obj1Offset))
         pdf.append(String.format("%010d 00000 n \n", obj2Offset))
         pdf.append(String.format("%010d 00000 n \n", obj3Offset))
         pdf.append(String.format("%010d 00000 n \n", obj4Offset))
+        if (needsFont) {
+            pdf.append(String.format("%010d 00000 n \n", obj5Offset))
+        }
         
         // Trailer
-        pdf.append("trailer\n<< /Size 5 /Root 1 0 R >>\n")
+        pdf.append("trailer\n<< /Size $objectCount /Root 1 0 R >>\n")
         pdf.append("startxref\n$xrefOffset\n%%EOF")
         
         return pdf.toString().toByteArray(Charsets.US_ASCII)

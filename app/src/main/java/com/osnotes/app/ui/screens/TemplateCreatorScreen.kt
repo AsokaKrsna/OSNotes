@@ -5,6 +5,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -674,6 +676,15 @@ private fun SectionsTab(
                 onColorSelected = { viewModel.updateHeaderColor(it) },
                 presetColors = backgroundColors
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = uiState.headerText,
+                onValueChange = { viewModel.updateHeaderText(it) },
+                label = { Text("Header Text") },
+                placeholder = { Text("e.g. Title, Date, Subject...") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
         }
         
         Divider()
@@ -704,6 +715,15 @@ private fun SectionsTab(
                 currentColor = uiState.footerColor,
                 onColorSelected = { viewModel.updateFooterColor(it) },
                 presetColors = backgroundColors
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = uiState.footerText,
+                onValueChange = { viewModel.updateFooterText(it) },
+                label = { Text("Footer Text") },
+                placeholder = { Text("e.g. Page #, Summary...") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
             )
         }
         
@@ -871,22 +891,22 @@ private fun EnhancedTemplatePreview(
             // Background
             drawRect(uiState.backgroundColor)
             
-            // Header section
+            // Header section (top of page)
+            val headerH = if (uiState.hasHeader) uiState.headerHeight * scale else 0f
             if (uiState.hasHeader) {
-                val headerH = uiState.headerHeight * scale
                 drawRect(
                     uiState.headerColor,
-                    topLeft = Offset(0f, height - headerH),
+                    topLeft = Offset(0f, 0f),
                     size = androidx.compose.ui.geometry.Size(width, headerH)
                 )
             }
             
-            // Footer section
+            // Footer section (bottom of page)
+            val footerH = if (uiState.hasFooter) uiState.footerHeight * scale else 0f
             if (uiState.hasFooter) {
-                val footerH = uiState.footerHeight * scale
                 drawRect(
                     uiState.footerColor,
-                    topLeft = Offset(0f, 0f),
+                    topLeft = Offset(0f, height - footerH),
                     size = androidx.compose.ui.geometry.Size(width, footerH)
                 )
             }
@@ -894,20 +914,18 @@ private fun EnhancedTemplatePreview(
             // Side column
             if (uiState.hasSideColumn) {
                 val colWidth = uiState.sideColumnWidth * scale
-                val footerH = if (uiState.hasFooter) uiState.footerHeight * scale else 0f
-                val headerH = if (uiState.hasHeader) uiState.headerHeight * scale else 0f
                 
                 if (uiState.sideColumnOnLeft) {
                     drawRect(
                         uiState.sideColumnColor,
-                        topLeft = Offset(0f, footerH),
-                        size = androidx.compose.ui.geometry.Size(colWidth, height - footerH - headerH)
+                        topLeft = Offset(0f, headerH),
+                        size = androidx.compose.ui.geometry.Size(colWidth, height - headerH - footerH)
                     )
                 } else {
                     drawRect(
                         uiState.sideColumnColor,
-                        topLeft = Offset(width - colWidth, footerH),
-                        size = androidx.compose.ui.geometry.Size(colWidth, height - footerH - headerH)
+                        topLeft = Offset(width - colWidth, headerH),
+                        size = androidx.compose.ui.geometry.Size(colWidth, height - headerH - footerH)
                     )
                 }
             }
@@ -1041,10 +1059,46 @@ private fun EnhancedTemplatePreview(
                 val lineX = uiState.marginLinePosition * scale
                 drawLine(
                     uiState.marginLineColor,
-                    Offset(lineX, marginB),
-                    Offset(lineX, height - marginT),
+                    Offset(lineX, marginT),
+                    Offset(lineX, height - marginB),
                     strokeWidth = 1f * scale
                 )
+            }
+            
+            // Header text
+            if (uiState.hasHeader && uiState.headerText.isNotBlank()) {
+                drawIntoCanvas { canvas ->
+                    val paint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.DKGRAY
+                        textSize = 10f * scale
+                        isAntiAlias = true
+                        textAlign = android.graphics.Paint.Align.CENTER
+                    }
+                    canvas.nativeCanvas.drawText(
+                        uiState.headerText,
+                        width / 2f,
+                        headerH / 2f + 4f * scale,
+                        paint
+                    )
+                }
+            }
+            
+            // Footer text
+            if (uiState.hasFooter && uiState.footerText.isNotBlank()) {
+                drawIntoCanvas { canvas ->
+                    val paint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.DKGRAY
+                        textSize = 10f * scale
+                        isAntiAlias = true
+                        textAlign = android.graphics.Paint.Align.CENTER
+                    }
+                    canvas.nativeCanvas.drawText(
+                        uiState.footerText,
+                        width / 2f,
+                        height - footerH / 2f + 4f * scale,
+                        paint
+                    )
+                }
             }
         }
     }

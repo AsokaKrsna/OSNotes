@@ -56,11 +56,13 @@ data class TemplateCreatorUiState(
     val hasHeader: Boolean = false,
     val headerHeight: Float = 60f,
     val headerColor: Color = Color(0xFFF0F0F5),
+    val headerText: String = "",
     
     // Footer
     val hasFooter: Boolean = false,
     val footerHeight: Float = 50f,
     val footerColor: Color = Color(0xFFF0F0F5),
+    val footerText: String = "",
     
     // Side column
     val hasSideColumn: Boolean = false,
@@ -127,9 +129,11 @@ class TemplateCreatorViewModel @Inject constructor(
             hasHeader = template.hasHeader,
             headerHeight = template.headerHeight,
             headerColor = Color(template.headerColor),
+            headerText = template.headerText,
             hasFooter = template.hasFooter,
             footerHeight = template.footerHeight,
             footerColor = Color(template.footerColor),
+            footerText = template.footerText,
             hasSideColumn = template.hasSideColumn,
             sideColumnWidth = template.sideColumnWidth,
             sideColumnColor = Color(template.sideColumnColor),
@@ -170,9 +174,11 @@ class TemplateCreatorViewModel @Inject constructor(
                     hasHeader = state.hasHeader,
                     headerHeight = state.headerHeight,
                     headerColor = state.headerColor.toArgb(),
+                    headerText = state.headerText,
                     hasFooter = state.hasFooter,
                     footerHeight = state.footerHeight,
                     footerColor = state.footerColor.toArgb(),
+                    footerText = state.footerText,
                     hasSideColumn = state.hasSideColumn,
                     sideColumnWidth = state.sideColumnWidth,
                     sideColumnColor = state.sideColumnColor.toArgb(),
@@ -317,6 +323,10 @@ class TemplateCreatorViewModel @Inject constructor(
         _uiState.update { it.copy(headerColor = color, isSaved = false) }
     }
     
+    fun updateHeaderText(text: String) {
+        _uiState.update { it.copy(headerText = text, isSaved = false) }
+    }
+    
     // ==================== Footer ====================
     
     fun toggleFooter() {
@@ -329,6 +339,10 @@ class TemplateCreatorViewModel @Inject constructor(
     
     fun updateFooterColor(color: Color) {
         _uiState.update { it.copy(footerColor = color, isSaved = false) }
+    }
+    
+    fun updateFooterText(text: String) {
+        _uiState.update { it.copy(footerText = text, isSaved = false) }
     }
     
     // ==================== Side Column ====================
@@ -397,9 +411,11 @@ class TemplateCreatorViewModel @Inject constructor(
             hasHeader = state.hasHeader,
             headerHeight = state.headerHeight,
             headerColor = state.headerColor.toArgb(),
+            headerText = state.headerText,
             hasFooter = state.hasFooter,
             footerHeight = state.footerHeight,
             footerColor = state.footerColor.toArgb(),
+            footerText = state.footerText,
             hasSideColumn = state.hasSideColumn,
             sideColumnWidth = state.sideColumnWidth,
             sideColumnColor = state.sideColumnColor.toArgb(),
