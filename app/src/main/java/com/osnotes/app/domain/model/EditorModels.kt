@@ -14,6 +14,7 @@ enum class AnnotationTool {
     HIGHLIGHTER,
     HIGHLIGHTER_2,   // Smart highlighter that snaps to text
     ERASER,
+    PIXEL_ERASER,    // Erases parts of strokes (splits them)
     LASSO,
     TEXT,
     SHAPES

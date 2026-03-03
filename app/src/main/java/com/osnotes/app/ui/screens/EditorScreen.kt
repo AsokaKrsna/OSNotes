@@ -238,7 +238,7 @@ fun EditorScreen(
                         GlassmorphicToolbar(
                             currentTool = uiState.currentTool,
                             currentColor = uiState.toolState.currentColor,
-                            currentWidth = uiState.toolState.strokeWidth,
+                            currentWidth = if (uiState.currentTool == AnnotationTool.ERASER || uiState.currentTool == AnnotationTool.PIXEL_ERASER) uiState.toolState.eraserWidth else uiState.toolState.strokeWidth,
                             recentColors = recentColors,
                             isHorizontal = uiState.toolbarPosition == "top",
                             isLightBackground = true,
@@ -272,7 +272,6 @@ fun EditorScreen(
                             scope.launch {
                                 pagerState.animateScrollToPage(page - 1)
                             }
-                            isWaterdropExpanded = false
                         },
                         modifier = Modifier
                             .align(
@@ -602,6 +601,9 @@ private fun PageCanvas(
                         },
                         onStrokeErase = { strokeId ->
                             viewModel.removeStroke(pageIndex, strokeId)
+                        },
+                        onStrokePixelErase = { strokeId, fragments ->
+                            viewModel.pixelEraseStroke(pageIndex, strokeId, fragments)
                         },
                         onShapeEnd = { shape ->
                             viewModel.addShape(pageIndex, shape)

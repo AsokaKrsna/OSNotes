@@ -180,6 +180,7 @@ fun InkingCanvas(
     onStrokeStart: () -> Unit = {},
     onStrokeEnd: (InkStroke) -> Unit = { _ -> },
     onStrokeErase: (String) -> Unit = { _ -> },
+    onStrokePixelErase: (String, List<InkStroke>) -> Unit = { _, _ -> },
     onShapeStart: () -> Unit = {},
     onShapeEnd: (ShapeAnnotation) -> Unit = { _ -> },
     onShapeErase: (String) -> Unit = { _ -> },
@@ -309,15 +310,18 @@ fun InkingCanvas(
             }
             
             // Draw eraser cursor (circle following stylus/finger when eraser is active)
-            if (currentToolState.currentTool == AnnotationTool.ERASER && currentTouchPosition != null) {
+            if ((currentToolState.currentTool == AnnotationTool.ERASER || currentToolState.currentTool == AnnotationTool.PIXEL_ERASER) && currentTouchPosition != null) {
+                val isPixelEraser = currentToolState.currentTool == AnnotationTool.PIXEL_ERASER
                 val screenPos = Offset(
                     currentTouchPosition!!.x * displayScale + offsetX,
                     currentTouchPosition!!.y * displayScale + offsetY
                 )
                 
-                // Draw outer circle (white with black border for visibility on any background)
+                val cursorColor = if (isPixelEraser) Color(0xFFFF6B6B) else Color.White
+                
+                // Draw outer circle
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = cursorColor.copy(alpha = 0.6f),
                     radius = (currentToolState.eraserWidth * displayScale) / 2,
                     center = screenPos,
                     style = Stroke(width = 2.dp.toPx())
@@ -331,9 +335,9 @@ fun InkingCanvas(
                     style = Stroke(width = 4.dp.toPx())
                 )
                 
-                // Draw white circle on top
+                // Draw colored circle on top
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = cursorColor.copy(alpha = 0.7f),
                     radius = (currentToolState.eraserWidth * displayScale) / 2,
                     center = screenPos,
                     style = Stroke(width = 2.dp.toPx())
@@ -341,6 +345,7 @@ fun InkingCanvas(
                 
                 // Draw inner crosshair for precision
                 val crosshairSize = 10.dp.toPx()
+                val crosshairColor = if (isPixelEraser) Color(0xFFFF6B6B) else Color.White
                 // Black outline for crosshair
                 drawLine(
                     color = Color.Black.copy(alpha = 0.8f),
@@ -354,15 +359,15 @@ fun InkingCanvas(
                     end = Offset(screenPos.x, screenPos.y + crosshairSize),
                     strokeWidth = 3.dp.toPx()
                 )
-                // White crosshair on top
+                // Colored crosshair on top
                 drawLine(
-                    color = Color.White.copy(alpha = 0.9f),
+                    color = crosshairColor.copy(alpha = 0.9f),
                     start = Offset(screenPos.x - crosshairSize, screenPos.y),
                     end = Offset(screenPos.x + crosshairSize, screenPos.y),
                     strokeWidth = 1.5.dp.toPx()
                 )
                 drawLine(
-                    color = Color.White.copy(alpha = 0.9f),
+                    color = crosshairColor.copy(alpha = 0.9f),
                     start = Offset(screenPos.x, screenPos.y - crosshairSize),
                     end = Offset(screenPos.x, screenPos.y + crosshairSize),
                     strokeWidth = 1.5.dp.toPx()
@@ -488,6 +493,14 @@ fun InkingCanvas(
                             AnnotationTool.ERASER -> {
                                 if (toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER) {
                                     checkEraserHit(position.x, position.y, currentStrokes, onStrokeErase, currentToolState.eraserWidth)
+                                    checkShapeEraserHit(position, currentShapes, onShapeErase, currentToolState.eraserWidth)
+                                    return true
+                                }
+                            }
+                            
+                            AnnotationTool.PIXEL_ERASER -> {
+                                if (toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER) {
+                                    pixelEraseStroke(position.x, position.y, currentStrokes, onStrokePixelErase, currentToolState.eraserWidth)
                                     checkShapeEraserHit(position, currentShapes, onShapeErase, currentToolState.eraserWidth)
                                     return true
                                 }
@@ -675,6 +688,17 @@ fun InkingCanvas(
                                     }
                                 }
                                 
+                                AnnotationTool.PIXEL_ERASER -> {
+                                    // Update touch position for cursor feedback
+                                    currentTouchPosition = position
+                                    
+                                    if (toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER) {
+                                        pixelEraseStroke(position.x, position.y, currentStrokes, onStrokePixelErase, currentToolState.eraserWidth)
+                                        checkShapeEraserHit(position, currentShapes, onShapeErase, currentToolState.eraserWidth)
+                                        return true
+                                    }
+                                }
+                                
                                 AnnotationTool.SHAPES -> {
                                     if (currentShapeStart != null && (toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER)) {
                                         currentShapeEnd = position
@@ -826,7 +850,7 @@ fun InkingCanvas(
                             else -> {
                                 // Handle NONE, TEXT, ERASER and any other tools
                                 // Clear touch position for eraser cursor
-                                if (currentToolState.currentTool == AnnotationTool.ERASER) {
+                                if (currentToolState.currentTool == AnnotationTool.ERASER || currentToolState.currentTool == AnnotationTool.PIXEL_ERASER) {
                                     currentTouchPosition = null
                                 }
                                 // No action needed for touch up events on these tools
@@ -1447,6 +1471,90 @@ private fun checkEraserHit(
             onStrokeErase(stroke.id)
             return
         }
+    }
+}
+
+/**
+ * Pixel eraser: splits strokes at the eraser intersection point.
+ * Points within the eraser radius are removed, and the remaining
+ * contiguous segments become separate strokes.
+ */
+private fun pixelEraseStroke(
+    x: Float,
+    y: Float,
+    strokes: List<InkStroke>,
+    onStrokePixelErase: (String, List<InkStroke>) -> Unit,
+    eraserRadius: Float
+) {
+    for (stroke in strokes) {
+        val points = stroke.points
+        if (points.isEmpty()) continue
+        
+        // Check if eraser touches this stroke at all
+        var touchesStroke = false
+        for (point in points) {
+            val dx = point.x - x
+            val dy = point.y - y
+            if (dx * dx + dy * dy < eraserRadius * eraserRadius) {
+                touchesStroke = true
+                break
+            }
+        }
+        
+        // Also check line segments between points
+        if (!touchesStroke && points.size > 1) {
+            val hitPoint = Offset(x, y)
+            for (i in 0 until points.size - 1) {
+                val p1 = Offset(points[i].x, points[i].y)
+                val p2 = Offset(points[i + 1].x, points[i + 1].y)
+                val dist = distanceToLineSegment(hitPoint, p1, p2)
+                if (dist < eraserRadius + stroke.strokeWidth / 2) {
+                    touchesStroke = true
+                    break
+                }
+            }
+        }
+        
+        if (!touchesStroke) continue
+        
+        // Split the stroke: collect contiguous segments that are OUTSIDE the eraser radius
+        val segments = mutableListOf<MutableList<StrokePoint>>()
+        var currentSegment = mutableListOf<StrokePoint>()
+        
+        for (point in points) {
+            val dx = point.x - x
+            val dy = point.y - y
+            val isInEraser = dx * dx + dy * dy < eraserRadius * eraserRadius
+            
+            if (!isInEraser) {
+                currentSegment.add(point)
+            } else {
+                // Point is inside eraser - break the segment
+                if (currentSegment.size >= 2) {
+                    segments.add(currentSegment)
+                }
+                currentSegment = mutableListOf()
+            }
+        }
+        // Don't forget the last segment
+        if (currentSegment.size >= 2) {
+            segments.add(currentSegment)
+        }
+        
+        // Create new strokes from the remaining segments
+        val newStrokes = segments.map { segmentPoints ->
+            InkStroke(
+                points = segmentPoints,
+                color = stroke.color,
+                strokeWidth = stroke.strokeWidth,
+                isHighlighter = stroke.isHighlighter,
+                pageNumber = stroke.pageNumber
+            )
+        }
+        
+        // Replace the original stroke with the fragments (may be empty if fully erased)
+        onStrokePixelErase(stroke.id, newStrokes)
+        return // Process one stroke at a time to avoid concurrent modification
     }
 }
 

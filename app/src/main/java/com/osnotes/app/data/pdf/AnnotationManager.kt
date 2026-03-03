@@ -30,6 +30,13 @@ class AnnotationManager @Inject constructor(
 ) {
     private val mutex = Mutex()
     
+    /** Only log in debug builds to avoid overhead and info leakage in production */
+    private fun debugLog(tag: String, msg: String) {
+        if (com.osnotes.app.BuildConfig.DEBUG) {
+            android.util.Log.d(tag, msg)
+        }
+    }
+    
     /**
      * Gets the temporary directory for intermediate PDF operations.
      */
@@ -87,11 +94,20 @@ class AnnotationManager @Inject constructor(
             try {
                 // Create a fresh working copy from the original URI
                 workingCopy = File(getTempDirectory(), "working_copy_${System.currentTimeMillis()}.pdf")
-                context.contentResolver.openInputStream(originalUri)?.use { inputStream ->
-                    workingCopy.outputStream().use { outputStream ->
-                        inputStream.copyTo(outputStream)
-                    }
+                val inputStream = if (originalUri.scheme == "file" || originalUri.scheme == null) {
+                    // file:// URI or bare path — read directly from filesystem
+                    val filePath = originalUri.path ?: originalUri.toString()
+                    File(filePath).inputStream()
+                } else {
+                    // content:// URI — use ContentResolver
+                    context.contentResolver.openInputStream(originalUri)
                 } ?: throw Exception("Cannot read original file")
+                
+                inputStream.use { input ->
+                    workingCopy.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
                 
                 // Create a temporary file for the annotated PDF
                 tempFile = File(getTempDirectory(), "temp_annotated_${System.currentTimeMillis()}.pdf")
@@ -109,7 +125,7 @@ class AnnotationManager @Inject constructor(
                     
                     if (pageStrokes.isEmpty() && pageShapes.isEmpty()) continue
                     
-                    android.util.Log.d("AnnotationManager", "Processing page $pageNumber: ${pageStrokes.size} strokes, ${pageShapes.size} shapes")
+                    debugLog("AnnotationManager", "Processing page $pageNumber: ${pageStrokes.size} strokes, ${pageShapes.size} shapes")
                     
                     // Debug: Log stroke IDs to detect duplicates
                     val strokeIds = pageStrokes.map { it.id }
@@ -125,7 +141,7 @@ class AnnotationManager @Inject constructor(
                         // When baking, we write DIRECTLY to the page content stream
                         // This bypasses the annotation system entirely - no AP streams needed
                         // The strokes become permanent vector graphics in the PDF
-                        android.util.Log.d("AnnotationManager", "Writing directly to content stream (bake mode)")
+                        debugLog("AnnotationManager", "Writing directly to content stream (bake mode)")
                         writeContentToPage(pdfDocument, page, pageStrokes, pageShapes)
                     } else {
                         // Add each stroke as an ink annotation (temporary, editable)
@@ -139,7 +155,7 @@ class AnnotationManager @Inject constructor(
                         }
                     }
                     
-                    android.util.Log.d("AnnotationManager", "Finished processing page $pageNumber")
+                    debugLog("AnnotationManager", "Finished processing page $pageNumber")
                     page.destroy()
                 }
                 
@@ -149,31 +165,31 @@ class AnnotationManager @Inject constructor(
                 // This avoids slow iteration through ALL pages during auto-save
                 // OPTION B FIX: Pass the set of annotated pages to only process those
                 if (bakeAnnotations) {
-                    android.util.Log.d("AnnotationManager", "Baking annotations: processing only ${annotatedPages.size} annotated pages")
+                    debugLog("AnnotationManager", "Baking annotations: processing only ${annotatedPages.size} annotated pages")
                     bakeAnnotationsIntoPages(pdfDocument, annotatedPages.toSet())
                 }
                 
                 // Save to temp file - use standard save without special options
                 // Previous attempts with "clean", "garbage", "pretty" caused PDF corruption
-                android.util.Log.d("AnnotationManager", "Saving to temp file with no special options")
+                debugLog("AnnotationManager", "Saving to temp file with no special options")
                 pdfDocument.save(tempFile.absolutePath, "")
-                android.util.Log.d("AnnotationManager", "Temp file size: ${tempFile.length()} bytes")
+                debugLog("AnnotationManager", "Temp file size: ${tempFile.length()} bytes")
                 pdfDocument.destroy()
                 document = null
                 
                 // Try to write back to original URI
                 var savedToOriginal = false
                 try {
-                    android.util.Log.d("AnnotationManager", "Attempting to write to original URI: $originalUri (scheme=${originalUri.scheme})")
+                    debugLog("AnnotationManager", "Attempting to write to original URI: $originalUri (scheme=${originalUri.scheme})")
                     
                     if (originalUri.scheme == "file") {
                         // For file:// URIs, write directly using FileOutputStream
                         val filePath = originalUri.path
                         if (filePath != null) {
                             val targetFile = File(filePath)
-                            android.util.Log.d("AnnotationManager", "Writing directly to file: $filePath")
+                            debugLog("AnnotationManager", "Writing directly to file: $filePath")
                             tempFile.copyTo(targetFile, overwrite = true)
-                            android.util.Log.d("AnnotationManager", "Wrote ${targetFile.length()} bytes to file")
+                            debugLog("AnnotationManager", "Wrote ${targetFile.length()} bytes to file")
                             savedToOriginal = true
                             
                             // Notify MediaStore so file managers see the updated file
@@ -182,7 +198,7 @@ class AnnotationManager @Inject constructor(
                                 arrayOf(filePath),
                                 arrayOf("application/pdf")
                             ) { path, uri ->
-                                android.util.Log.d("AnnotationManager", "MediaScanner scanned: $path -> $uri")
+                                debugLog("AnnotationManager", "MediaScanner scanned: $path -> $uri")
                             }
                         } else {
                             android.util.Log.w("AnnotationManager", "file:// URI has null path")
@@ -192,7 +208,7 @@ class AnnotationManager @Inject constructor(
                         context.contentResolver.openOutputStream(originalUri, "wt")?.use { outputStream ->
                             tempFile.inputStream().use { inputStream ->
                                 val bytesCopied = inputStream.copyTo(outputStream)
-                                android.util.Log.d("AnnotationManager", "Wrote $bytesCopied bytes via ContentResolver")
+                                debugLog("AnnotationManager", "Wrote $bytesCopied bytes via ContentResolver")
                             }
                             savedToOriginal = true
                         }
@@ -208,15 +224,15 @@ class AnnotationManager @Inject constructor(
                 }
                 
                 if (savedToOriginal) {
-                    android.util.Log.d("AnnotationManager", "SUCCESS: Saved to original URI")
+                    debugLog("AnnotationManager", "SUCCESS: Saved to original URI")
                     Result.success("original")
                 } else {
                     // Save to app's output directory instead
                     val originalName = sourcePath.substringAfterLast("/").substringAfterLast("\\")
                     val outputPath = generateOutputPath(originalName)
-                    android.util.Log.d("AnnotationManager", "Saving to fallback path: $outputPath")
+                    debugLog("AnnotationManager", "Saving to fallback path: $outputPath")
                     tempFile.copyTo(File(outputPath), overwrite = true)
-                    android.util.Log.d("AnnotationManager", "SUCCESS: Saved to fallback path")
+                    debugLog("AnnotationManager", "SUCCESS: Saved to fallback path")
                     Result.success(outputPath)
                 }
             } catch (e: Exception) {
@@ -247,11 +263,11 @@ class AnnotationManager @Inject constructor(
             val bounds = page.bounds // MuPDF Rect is usually [x0, y0, x1, y1] in PDF units
             
             // Log page bounds for debugging
-            android.util.Log.d("AnnotationManager", "Page bounds: x0=${bounds.x0}, y0=${bounds.y0}, x1=${bounds.x1}, y1=${bounds.y1}")
+            debugLog("AnnotationManager", "Page bounds: x0=${bounds.x0}, y0=${bounds.y0}, x1=${bounds.x1}, y1=${bounds.y1}")
             if (strokes.isNotEmpty() && strokes[0].points.isNotEmpty()) {
                 val pt = strokes[0].points[0]
-                android.util.Log.d("AnnotationManager", "First stroke point (input): x=${pt.x}, y=${pt.y}")
-                android.util.Log.d("AnnotationManager", "Transformed: x=${pt.x + bounds.x0}, y=${bounds.y1 - pt.y}")
+                debugLog("AnnotationManager", "First stroke point (input): x=${pt.x}, y=${pt.y}")
+                debugLog("AnnotationManager", "Transformed: x=${pt.x + bounds.x0}, y=${bounds.y1 - pt.y}")
             }
             
             // Helper for safe PDF float formatting (no scientific notation, dot separator)
@@ -267,7 +283,7 @@ class AnnotationManager @Inject constructor(
             if (hasHighlighters) {
                 // Use 0.4f alpha to match temporary annotation opacity
                 highlightGsName = ensureTransparencyResource(document, pageObj, 0.4f)
-                android.util.Log.d("AnnotationManager", "Created transparency resource: $highlightGsName")
+                debugLog("AnnotationManager", "Created transparency resource: $highlightGsName")
                 
                 // Ensure page has a transparency group for blending to work
                 ensureTransparencyGroup(document, pageObj)
@@ -356,7 +372,7 @@ class AnnotationManager @Inject constructor(
             
             // Log the beginning of the stream for debugging
             val logSnippet = if (contentBuffer.length > 100) contentBuffer.substring(0, 100) + "..." else contentBuffer.toString()
-            android.util.Log.d("AnnotationManager", "Writing content stream: $logSnippet")
+            debugLog("AnnotationManager", "Writing content stream: $logSnippet")
             
             // Append to page contents using direct stream manipulation
             addStreamToPage(document, pageObj, contentBuffer.toString())
@@ -416,10 +432,10 @@ class AnnotationManager @Inject constructor(
             // Create Form XObject for appearance
             // IMPORTANT: addStream returns an indirect reference, must resolve before modifying
             val apStreamRef = document.addStream(content.toString())
-            android.util.Log.d("AnnotationManager", "addStream returned: isIndirect=${apStreamRef.isIndirect}, isStream=${apStreamRef.isStream}")
+            debugLog("AnnotationManager", "addStream returned: isIndirect=${apStreamRef.isIndirect}, isStream=${apStreamRef.isStream}")
             
             val apStream = apStreamRef.resolve()
-            android.util.Log.d("AnnotationManager", "After resolve: isStream=${apStream.isStream}, isDictionary=${apStream.isDictionary}")
+            debugLog("AnnotationManager", "After resolve: isStream=${apStream.isStream}, isDictionary=${apStream.isDictionary}")
             
             apStream.put("Type", document.newName("XObject"))
             apStream.put("Subtype", document.newName("Form"))
@@ -433,7 +449,7 @@ class AnnotationManager @Inject constructor(
             bbox.push(y1 - y0)
             apStream.put("BBox", bbox)
             
-            android.util.Log.d("AnnotationManager", "After put: apStream.isStream=${apStream.isStream}, Subtype=${apStream.get("Subtype")?.asName()}")
+            debugLog("AnnotationManager", "After put: apStream.isStream=${apStream.isStream}, Subtype=${apStream.get("Subtype")?.asName()}")
             
             // Create AP dictionary and use the REFERENCE (not the resolved object)
             val ap = document.newDictionary()
@@ -441,7 +457,7 @@ class AnnotationManager @Inject constructor(
             
             // Verify what we're putting
             val apN = ap.get("N")
-            android.util.Log.d("AnnotationManager", "AP/N after put: isIndirect=${apN?.isIndirect}, resolved.isStream=${apN?.resolve()?.isStream}")
+            debugLog("AnnotationManager", "AP/N after put: isIndirect=${apN?.isIndirect}, resolved.isStream=${apN?.resolve()?.isStream}")
             
             // Set AP on annotation
             annotObj.put("AP", ap)
@@ -449,7 +465,7 @@ class AnnotationManager @Inject constructor(
             // Final verification 
             val finalAP = annotObj.get("AP")?.resolve()
             val finalN = finalAP?.get("N")?.resolve()
-            android.util.Log.d("AnnotationManager", "FINAL: AP exists=${finalAP != null}, N.isStream=${finalN?.isStream}")
+            debugLog("AnnotationManager", "FINAL: AP exists=${finalAP != null}, N.isStream=${finalN?.isStream}")
             
         } catch (e: Exception) {
             android.util.Log.e("AnnotationManager", "Error generating ink appearance stream", e)
@@ -535,12 +551,12 @@ class AnnotationManager @Inject constructor(
      */
     private fun addStreamToPage(document: PDFDocument, pageObj: PDFObject, content: String) {
         val newStream = document.addStream(content)
-        android.util.Log.d("AnnotationManager", "addStreamToPage: newStream created, isIndirect=${newStream.isIndirect}")
+        debugLog("AnnotationManager", "addStreamToPage: newStream created, isIndirect=${newStream.isIndirect}")
         
         val contents = pageObj.get("Contents")
         
         if (contents == null || contents.isNull) {
-            android.util.Log.d("AnnotationManager", "addStreamToPage: No existing Contents, setting new stream")
+            debugLog("AnnotationManager", "addStreamToPage: No existing Contents, setting new stream")
             pageObj.put("Contents", newStream)
         } else {
             // We need to create a new array and replace Contents entirely
@@ -551,19 +567,19 @@ class AnnotationManager @Inject constructor(
             if (resolvedContents.isArray) {
                 // Copy existing array items
                 val len = resolvedContents.size()
-                android.util.Log.d("AnnotationManager", "addStreamToPage: Existing Contents is array with $len items")
+                debugLog("AnnotationManager", "addStreamToPage: Existing Contents is array with $len items")
                 for (i in 0 until len) {
                     contentsArray.push(resolvedContents.get(i))
                 }
             } else {
                 // Single stream - add it first
-                android.util.Log.d("AnnotationManager", "addStreamToPage: Existing Contents is single stream")
+                debugLog("AnnotationManager", "addStreamToPage: Existing Contents is single stream")
                 contentsArray.push(contents)
             }
             
             // Add our new stream
             contentsArray.push(newStream)
-            android.util.Log.d("AnnotationManager", "addStreamToPage: Final array has ${contentsArray.size()} items")
+            debugLog("AnnotationManager", "addStreamToPage: Final array has ${contentsArray.size()} items")
             
             // Replace Contents with new array
             pageObj.put("Contents", contentsArray)
@@ -616,7 +632,7 @@ class AnnotationManager @Inject constructor(
         // Add/replace in resources
         extGState!!.put(key, dict)
         
-        android.util.Log.d("AnnotationManager", "Set ExtGState: $key (CA=$alpha, no blend mode)")
+        debugLog("AnnotationManager", "Set ExtGState: $key (CA=$alpha, no blend mode)")
         
         return key
     }
@@ -640,7 +656,7 @@ class AnnotationManager @Inject constructor(
             group.put("CS", document.newName("DeviceRGB"))
             
             pageObj.put("Group", group)
-            android.util.Log.d("AnnotationManager", "Set transparency Group: S=Transparency, I=false, CS=DeviceRGB")
+            debugLog("AnnotationManager", "Set transparency Group: S=Transparency, I=false, CS=DeviceRGB")
             
         } catch (e: Exception) {
             android.util.Log.e("AnnotationManager", "Error ensuring transparency group", e)
@@ -793,7 +809,7 @@ class AnnotationManager @Inject constructor(
         try {
             // Create ink annotation
             val annot = page.createAnnotation(PDFAnnotation.TYPE_INK)
-            android.util.Log.d("AnnotationManager", "Created Ink annotation with ${stroke.points.size} points")
+            debugLog("AnnotationManager", "Created Ink annotation with ${stroke.points.size} points")
             
             // Get page bounds for debugging
             val pageBounds = page.bounds
@@ -832,16 +848,16 @@ class AnnotationManager @Inject constructor(
                 val ry0 = rect.get(1).asFloat()
                 val rx1 = rect.get(2).asFloat()
                 val ry1 = rect.get(3).asFloat()
-                android.util.Log.d("AnnotationManager", "Ink annotation Rect: x0=$rx0, y0=$ry0, x1=$rx1, y1=$ry1")
-                android.util.Log.d("AnnotationManager", "First point input: (${stroke.points[0].x}, ${stroke.points[0].y})")
-                android.util.Log.d("AnnotationManager", "Page bounds: y1=${pageBounds.y1}")
+                debugLog("AnnotationManager", "Ink annotation Rect: x0=$rx0, y0=$ry0, x1=$rx1, y1=$ry1")
+                debugLog("AnnotationManager", "First point input: (${stroke.points[0].x}, ${stroke.points[0].y})")
+                debugLog("AnnotationManager", "Page bounds: y1=${pageBounds.y1}")
             }
             
-            android.util.Log.d("AnnotationManager", "Ink annotation updated, generating AP stream...")
+            debugLog("AnnotationManager", "Ink annotation updated, generating AP stream...")
             
             // Manually generate appearance stream since MuPDF Java doesn't expose updateAppearance()
             generateInkAppearanceStream(document, annot, stroke)
-            android.util.Log.d("AnnotationManager", "Ink annotation AP stream generated")
+            debugLog("AnnotationManager", "Ink annotation AP stream generated")
         } catch (e: Exception) {
             android.util.Log.e("AnnotationManager", "Error creating ink annotation", e)
             e.printStackTrace()
@@ -964,7 +980,7 @@ class AnnotationManager @Inject constructor(
         val pageCount = document.countPages()
         // OPTION B FIX: Only process specified pages, or all if not specified
         val pagesToProcess = annotatedPages ?: (0 until pageCount).toSet()
-        android.util.Log.d("AnnotationManager", "bakeAnnotationsIntoPages: processing ${pagesToProcess.size} of $pageCount pages")
+        debugLog("AnnotationManager", "bakeAnnotationsIntoPages: processing ${pagesToProcess.size} of $pageCount pages")
         
         for (pageIndex in pagesToProcess) {
             try {
@@ -974,12 +990,12 @@ class AnnotationManager @Inject constructor(
                 // Get annotations array
                 val annots = pageObj.get("Annots")
                 if (annots == null || !annots.isArray) {
-                    android.util.Log.d("AnnotationManager", "Page $pageIndex: no Annots array")
+                    debugLog("AnnotationManager", "Page $pageIndex: no Annots array")
                     page.destroy()
                     continue
                 }
                 
-                android.util.Log.d("AnnotationManager", "Page $pageIndex: found ${annots.size()} annotations")
+                debugLog("AnnotationManager", "Page $pageIndex: found ${annots.size()} annotations")
                 
                 // Ensure Resources and XObject dictionaries exist
                 var resources = pageObj.get("Resources")
@@ -1003,7 +1019,7 @@ class AnnotationManager @Inject constructor(
                     try {
                         val annot = annots.get(i).resolve()
                         val subtype = annot.get("Subtype")?.asName()
-                        android.util.Log.d("AnnotationManager", "Page $pageIndex, Annot $i: subtype=$subtype")
+                        debugLog("AnnotationManager", "Page $pageIndex, Annot $i: subtype=$subtype")
                         
                         // Skip Link annotations (keep them interactive)
                         if (subtype == "Link" || subtype == "Widget") continue
@@ -1011,11 +1027,11 @@ class AnnotationManager @Inject constructor(
                         // Get appearance dictionary
                         val ap = annot.get("AP")?.resolve()
                         if (ap == null) {
-                            android.util.Log.d("AnnotationManager", "Page $pageIndex, Annot $i: NO AP dictionary!")
+                            debugLog("AnnotationManager", "Page $pageIndex, Annot $i: NO AP dictionary!")
                             // FIX: Still mark Ink annotations for removal - they were added by us
                             // but without proper AP, so delete to prevent double rendering
                             if (subtype == "Ink" || subtype == "Highlight") {
-                                android.util.Log.d("AnnotationManager", "Page $pageIndex, Annot $i: Marking for removal (no AP)")
+                                debugLog("AnnotationManager", "Page $pageIndex, Annot $i: Marking for removal (no AP)")
                                 annotsToRemove.add(i)
                             }
                             continue
@@ -1031,16 +1047,16 @@ class AnnotationManager @Inject constructor(
                         }
                         
                         if (appearance == null || !appearance.isStream) {
-                            android.util.Log.d("AnnotationManager", "Page $pageIndex, Annot $i: AP/N is not a stream")
+                            debugLog("AnnotationManager", "Page $pageIndex, Annot $i: AP/N is not a stream")
                             // FIX: Still mark Ink/Highlight annotations for removal
                             if (subtype == "Ink" || subtype == "Highlight") {
-                                android.util.Log.d("AnnotationManager", "Page $pageIndex, Annot $i: Marking for removal (invalid AP)")
+                                debugLog("AnnotationManager", "Page $pageIndex, Annot $i: Marking for removal (invalid AP)")
                                 annotsToRemove.add(i)
                             }
                             continue
                         }
                         
-                        android.util.Log.d("AnnotationManager", "Page $pageIndex, Annot $i: Found valid AP stream, will flatten")
+                        debugLog("AnnotationManager", "Page $pageIndex, Annot $i: Found valid AP stream, will flatten")
                         
                         // Get annotation opacity (CA = stroke alpha, ca = fill alpha)
                         // This is critical for highlighters which have opacity < 1
@@ -1050,7 +1066,7 @@ class AnnotationManager @Inject constructor(
                         } else {
                             1f
                         }
-                        android.util.Log.d("AnnotationManager", "Page $pageIndex, Annot $i: opacity=$annotOpacity")
+                        debugLog("AnnotationManager", "Page $pageIndex, Annot $i: opacity=$annotOpacity")
                         
                         // Get annotation rectangle
                         val rect = annot.get("Rect")
@@ -1147,7 +1163,7 @@ class AnnotationManager @Inject constructor(
                             hasTransparentAnnotations = true
                             val gsName = ensureTransparencyResource(document, pageObj, annotOpacity)
                             contentAdditions.append("/$gsName gs ")
-                            android.util.Log.d("AnnotationManager", "Page $pageIndex, Annot $i: Applied transparency GS: $gsName")
+                            debugLog("AnnotationManager", "Page $pageIndex, Annot $i: Applied transparency GS: $gsName")
                         }
                         
                         contentAdditions.append("$scaleX 0 0 $scaleY $translateX $translateY cm ")

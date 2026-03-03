@@ -207,6 +207,7 @@ private fun ToolbarButtons(
         AnnotationTool.PEN to Icons.Default.Edit,
         AnnotationTool.HIGHLIGHTER to Icons.Default.Highlight,
         AnnotationTool.ERASER to Icons.Outlined.CleaningServices,
+        AnnotationTool.PIXEL_ERASER to Icons.Default.AutoFixOff,
         AnnotationTool.LASSO to Icons.Outlined.Gesture,
         AnnotationTool.TEXT to Icons.Default.TextFields,
         AnnotationTool.SHAPES to Icons.Outlined.CropSquare
@@ -215,7 +216,7 @@ private fun ToolbarButtons(
     tools.forEach { (tool, icon) ->
         AdvancedToolButton(
             icon = icon,
-            label = tool.name.lowercase().replaceFirstChar { it.uppercase() },
+            label = if (tool == AnnotationTool.PIXEL_ERASER) "Pixel" else tool.name.lowercase().replaceFirstChar { it.uppercase() },
             isSelected = currentTool == tool,
             indicatorColor = if (tool == AnnotationTool.PEN || tool == AnnotationTool.HIGHLIGHTER) currentColor else null,
             onTap = { onToolTap(tool) },
@@ -637,6 +638,6 @@ private fun AnnotationTool.hasPresets(): Boolean = when (this) {
 private fun AnnotationTool.isCustomizable(): Boolean = when (this) {
     AnnotationTool.PEN, AnnotationTool.PEN_2,
     AnnotationTool.HIGHLIGHTER, AnnotationTool.HIGHLIGHTER_2,
-    AnnotationTool.ERASER, AnnotationTool.SHAPES -> true
+    AnnotationTool.ERASER, AnnotationTool.PIXEL_ERASER, AnnotationTool.SHAPES -> true
     else -> false
 }

@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.osnotes.app.data.pdf.AnnotationManager
 import com.osnotes.app.data.pdf.MuPdfRenderer
 import com.osnotes.app.data.pdf.PdfAnnotationFlattener
 import com.osnotes.app.data.repository.AnnotationRepository
@@ -63,6 +64,7 @@ class EditorViewModel @Inject constructor(
     private val storageManager: StorageManager,
     private val annotationRepository: AnnotationRepository,
     private val pdfFlattener: PdfAnnotationFlattener,
+    private val annotationManager: AnnotationManager,
     private val exportManager: ExportManager,
     private val customTemplateRepository: CustomTemplateRepository
 ) : ViewModel() {
@@ -70,6 +72,7 @@ class EditorViewModel @Inject constructor(
     companion object {
         private const val AUTO_SAVE_DELAY_MS = 10_000L // 10 seconds
         private const val HIGH_ANNOTATION_WARNING_THRESHOLD = 500
+        private const val MAX_UNDO_STACK_SIZE = 100
         const val RENDER_SCALE = 2f // Consistent scale factor for PDF rendering
         
         // Tool settings persistence keys
@@ -110,9 +113,20 @@ class EditorViewModel @Inject constructor(
     // Text annotations per page
     private val pageTexts = mutableMapOf<Int, MutableStateFlow<List<TextAnnotation>>>()
     
-    // Undo/Redo stacks
+    // Undo/Redo stacks (capped at MAX_UNDO_STACK_SIZE)
     private val undoStack = mutableListOf<UndoAction>()
     private val redoStack = mutableListOf<UndoAction>()
+    
+    // Dirty page tracking — only save pages that changed since last save
+    private val dirtyPages = mutableSetOf<Int>()
+    
+    /** Push an undo action with stack size cap */
+    private fun pushUndo(action: UndoAction) {
+        undoStack.add(action)
+        if (undoStack.size > MAX_UNDO_STACK_SIZE) {
+            undoStack.removeFirst()
+        }
+    }
     
     // Auto-save job
     private var autoSaveJob: Job? = null
@@ -457,6 +471,9 @@ class EditorViewModel @Inject constructor(
                     strokeWidth = width,
                     shapeWidth = width
                 )
+                AnnotationTool.ERASER, AnnotationTool.PIXEL_ERASER -> toolState.copy(
+                    eraserWidth = width
+                )
                 else -> toolState.copy(strokeWidth = width)
             }
             state.copy(toolState = newToolState)
@@ -499,8 +516,9 @@ class EditorViewModel @Inject constructor(
         val flow = pageStrokes.getOrPut(pageIndex) { MutableStateFlow(emptyList()) }
         flow.value = flow.value + stroke
         
-        undoStack.add(UndoAction.AddStroke(pageIndex, stroke))
+        pushUndo(UndoAction.AddStroke(pageIndex, stroke))
         redoStack.clear()
+        dirtyPages.add(pageIndex)
         
         markUnsaved()
         updateUndoRedoState()
@@ -514,8 +532,31 @@ class EditorViewModel @Inject constructor(
         
         flow.value = flow.value.filter { it.id != strokeId }
         
-        undoStack.add(UndoAction.RemoveStroke(pageIndex, stroke))
+        pushUndo(UndoAction.RemoveStroke(pageIndex, stroke))
         redoStack.clear()
+        dirtyPages.add(pageIndex)
+        
+        markUnsaved()
+        updateUndoRedoState()
+        updateAnnotationCount()
+    }
+    
+    /**
+     * Pixel eraser: replaces a stroke with its remaining fragments.
+     * The original stroke is removed and the fragments are added in its place.
+     */
+    fun pixelEraseStroke(pageIndex: Int, strokeId: String, fragments: List<InkStroke>) {
+        val flow = pageStrokes[pageIndex] ?: return
+        val originalStroke = flow.value.find { it.id == strokeId } ?: return
+        
+        // Remove the original and add fragments in its place
+        flow.value = flow.value.filter { it.id != strokeId } + fragments
+        
+        // For undo, record the removal of the original stroke
+        // (undo will restore the original, ignoring fragments)
+        pushUndo(UndoAction.RemoveStroke(pageIndex, originalStroke))
+        redoStack.clear()
+        dirtyPages.add(pageIndex)
         
         markUnsaved()
         updateUndoRedoState()
@@ -528,8 +569,9 @@ class EditorViewModel @Inject constructor(
         val flow = pageShapes.getOrPut(pageIndex) { MutableStateFlow(emptyList()) }
         flow.value = flow.value + shape
         
-        undoStack.add(UndoAction.AddShape(pageIndex, shape))
+        pushUndo(UndoAction.AddShape(pageIndex, shape))
         redoStack.clear()
+        dirtyPages.add(pageIndex)
         
         markUnsaved()
         updateUndoRedoState()
@@ -542,8 +584,9 @@ class EditorViewModel @Inject constructor(
         
         flow.value = flow.value.filter { it.id != shapeId }
         
-        undoStack.add(UndoAction.RemoveShape(pageIndex, shape))
+        pushUndo(UndoAction.RemoveShape(pageIndex, shape))
         redoStack.clear()
+        dirtyPages.add(pageIndex)
         
         markUnsaved()
         updateUndoRedoState()
@@ -824,8 +867,9 @@ class EditorViewModel @Inject constructor(
         val flow = pageTexts.getOrPut(pageIndex) { MutableStateFlow(emptyList()) }
         flow.value = flow.value + text
         
-        undoStack.add(UndoAction.AddText(pageIndex, text))
+        pushUndo(UndoAction.AddText(pageIndex, text))
         redoStack.clear()
+        dirtyPages.add(pageIndex)
         
         hideTextInput()
         markUnsaved()
@@ -839,8 +883,9 @@ class EditorViewModel @Inject constructor(
         
         flow.value = flow.value.filter { it.id != textId }
         
-        undoStack.add(UndoAction.RemoveText(pageIndex, text))
+        pushUndo(UndoAction.RemoveText(pageIndex, text))
         redoStack.clear()
+        dirtyPages.add(pageIndex)
         
         markUnsaved()
         updateUndoRedoState()
@@ -1050,6 +1095,15 @@ class EditorViewModel @Inject constructor(
         if (undoStack.isEmpty()) return
         
         val action = undoStack.removeLast()
+        val pageIndex = when (action) {
+            is UndoAction.AddStroke -> action.pageIndex
+            is UndoAction.RemoveStroke -> action.pageIndex
+            is UndoAction.AddShape -> action.pageIndex
+            is UndoAction.RemoveShape -> action.pageIndex
+            is UndoAction.AddText -> action.pageIndex
+            is UndoAction.RemoveText -> action.pageIndex
+        }
+        
         when (action) {
             is UndoAction.AddStroke -> {
                 val flow = pageStrokes[action.pageIndex] ?: return
@@ -1077,6 +1131,7 @@ class EditorViewModel @Inject constructor(
             }
         }
         
+        dirtyPages.add(pageIndex)
         redoStack.add(action)
         markUnsaved()
         updateUndoRedoState()
@@ -1087,6 +1142,15 @@ class EditorViewModel @Inject constructor(
         if (redoStack.isEmpty()) return
         
         val action = redoStack.removeLast()
+        val pageIndex = when (action) {
+            is UndoAction.AddStroke -> action.pageIndex
+            is UndoAction.RemoveStroke -> action.pageIndex
+            is UndoAction.AddShape -> action.pageIndex
+            is UndoAction.RemoveShape -> action.pageIndex
+            is UndoAction.AddText -> action.pageIndex
+            is UndoAction.RemoveText -> action.pageIndex
+        }
+        
         when (action) {
             is UndoAction.AddStroke -> {
                 val flow = pageStrokes.getOrPut(action.pageIndex) { MutableStateFlow(emptyList()) }
@@ -1114,7 +1178,8 @@ class EditorViewModel @Inject constructor(
             }
         }
         
-        undoStack.add(action)
+        dirtyPages.add(pageIndex)
+        pushUndo(action)
         markUnsaved()
         updateUndoRedoState()
         updateAnnotationCount()
@@ -1152,14 +1217,19 @@ class EditorViewModel @Inject constructor(
                 // 1. Save PDF structure changes (like added pages)
                 pdfRenderer.saveToWorkingFile().getOrThrow()
                 
-                // 2. Save all strokes to database (delete old ones first to handle undo)
-                for ((pageIndex, strokesFlow) in pageStrokes) {
+                // Snapshot and clear dirty pages so we only save what changed
+                val pagesToSave = dirtyPages.toSet()
+                dirtyPages.clear()
+                
+                // 2. Save only dirty pages (strokes, shapes, texts)
+                for (pageIndex in pagesToSave) {
                     val pageUuid = pageUuids[pageIndex] ?: continue
-                    val strokes = strokesFlow.value
                     
-                    // Delete existing strokes for this page before saving current state
+                    // Delete existing annotations for this dirty page
                     annotationRepository.deleteAnnotationsForPage(pageUuid)
                     
+                    // Re-insert current strokes
+                    val strokes = pageStrokes[pageIndex]?.value ?: emptyList()
                     if (strokes.isNotEmpty()) {
                         annotationRepository.saveStrokes(
                             documentUri = documentPath,
@@ -1168,13 +1238,9 @@ class EditorViewModel @Inject constructor(
                             strokes = strokes
                         )
                     }
-                }
-                
-                // 3. Save all shapes to database
-                for ((pageIndex, shapesFlow) in pageShapes) {
-                    val pageUuid = pageUuids[pageIndex] ?: continue
-                    val shapes = shapesFlow.value
                     
+                    // Re-insert current shapes
+                    val shapes = pageShapes[pageIndex]?.value ?: emptyList()
                     if (shapes.isNotEmpty()) {
                         annotationRepository.saveShapes(
                             documentUri = documentPath,
@@ -1183,13 +1249,9 @@ class EditorViewModel @Inject constructor(
                             shapes = shapes
                         )
                     }
-                }
-                
-                // 4. Save all text annotations to database
-                for ((pageIndex, textsFlow) in pageTexts) {
-                    val pageUuid = pageUuids[pageIndex] ?: continue
-                    val texts = textsFlow.value
                     
+                    // Re-insert current text annotations
+                    val texts = pageTexts[pageIndex]?.value ?: emptyList()
                     if (texts.isNotEmpty()) {
                         annotationRepository.saveTextAnnotations(
                             documentUri = documentPath,
@@ -1222,62 +1284,98 @@ class EditorViewModel @Inject constructor(
                 
                 // Collect all annotations by page
                 val strokesByPage = pageStrokes.mapValues { it.value.value }
+                    .filter { it.value.isNotEmpty() }
                 val shapesByPage = pageShapes.mapValues { it.value.value }
+                    .filter { it.value.isNotEmpty() }
                 val textsByPage = pageTexts.mapValues { it.value.value }
+                    .filter { it.value.isNotEmpty() }
                 
-                // Flatten annotations into PDF
-                val result = pdfFlattener.flattenAnnotations(
-                    sourceUri = uri,
-                    strokes = strokesByPage,
-                    shapes = shapesByPage,
-                    textAnnotations = textsByPage,
-                    replaceOriginal = true,
-                    renderScale = RENDER_SCALE // Use the same scale as rendering
-                )
-                
-                when (result) {
-                    is PdfAnnotationFlattener.FlattenResult.Success -> {
-                        // Reopen the document in the renderer to pick up the changes
-                        val uri = Uri.parse(_uiState.value.documentPath)
-                        pdfRenderer.openDocument(uri)
-                        
-                        // Clear local strokes and database annotations
-                        val documentPath = _uiState.value.documentPath
-                        annotationRepository.deleteAnnotationsForDocument(documentPath)
-                        
-                        pageStrokes.values.forEach { it.value = emptyList() }
-                        pageShapes.values.forEach { it.value = emptyList() }
-                        pageTexts.values.forEach { it.value = emptyList() }
-                        undoStack.clear()
-                        redoStack.clear()
-                        
-                        _uiState.update { 
-                            it.copy(
-                                hasUnsavedChanges = false,
-                                isFlattening = false,
-                                canUndo = false,
-                                canRedo = false,
-                                annotationCount = 0,
-                                warning = null,
-                                selection = Selection()
-                            )
-                        }
-                        
-                        // Reload page bitmaps to show flattened content
-                        pageBitmaps.clear()
-                        getPageBitmap(_uiState.value.currentPage)
-                    }
-                    is PdfAnnotationFlattener.FlattenResult.Error -> {
-                        _uiState.update { 
-                            it.copy(
-                                isFlattening = false,
-                                error = result.message
-                            )
-                        }
+                // Convert EditorModels.ShapeAnnotation to ShapeTools.ShapeAnnotation
+                // for the AnnotationManager's vector path
+                val toolShapesByPage = shapesByPage.mapValues { (_, shapes) ->
+                    shapes.map { shape ->
+                        com.osnotes.app.ui.tools.ShapeAnnotation(
+                            id = shape.id,
+                            type = shape.shapeType,
+                            startX = shape.startPoint.x,
+                            startY = shape.startPoint.y,
+                            endX = shape.endPoint.x,
+                            endY = shape.endPoint.y,
+                            color = shape.color,
+                            strokeWidth = shape.strokeWidth,
+                            isFilled = shape.filled,
+                            pageNumber = shape.pageNumber
+                        )
                     }
                 }
                 
+                // Use vector-based path via AnnotationManager — lossless quality
+                // Writes strokes/shapes as native PDF path operators (no bitmap rasterization)
+                val hasStrokesOrShapes = strokesByPage.isNotEmpty() || toolShapesByPage.isNotEmpty()
+                
+                if (hasStrokesOrShapes) {
+                    val result = annotationManager.saveAnnotationsToOriginalFile(
+                        originalUri = uri,
+                        sourcePath = "",  // Not used — reads from URI directly
+                        strokes = strokesByPage,
+                        shapes = toolShapesByPage,
+                        bakeAnnotations = true  // Write as permanent vector content
+                    )
+                    
+                    result.getOrThrow()
+                }
+                
+                // Handle text annotations separately via bitmap flattening
+                // (text needs font rendering which requires rasterization)
+                if (textsByPage.isNotEmpty()) {
+                    val textResult = pdfFlattener.flattenAnnotations(
+                        sourceUri = uri,
+                        strokes = emptyMap(),  // Already baked as vectors
+                        shapes = emptyMap(),
+                        textAnnotations = textsByPage,
+                        replaceOriginal = true,
+                        renderScale = RENDER_SCALE
+                    )
+                    
+                    if (textResult is PdfAnnotationFlattener.FlattenResult.Error) {
+                        android.util.Log.w("EditorViewModel", "Text flattening failed: ${textResult.message}")
+                    }
+                }
+                
+                // Reopen the document to pick up changes
+                pdfRenderer.openDocument(uri)
+                
+                // Clear local annotations and database
+                val documentPath = _uiState.value.documentPath
+                annotationRepository.deleteAnnotationsForDocument(documentPath)
+                
+                pageStrokes.values.forEach { it.value = emptyList() }
+                pageShapes.values.forEach { it.value = emptyList() }
+                pageTexts.values.forEach { it.value = emptyList() }
+                undoStack.clear()
+                redoStack.clear()
+                dirtyPages.clear()
+                
+                _uiState.update { 
+                    it.copy(
+                        hasUnsavedChanges = false,
+                        isFlattening = false,
+                        canUndo = false,
+                        canRedo = false,
+                        annotationCount = 0,
+                        warning = null,
+                        selection = Selection()
+                    )
+                }
+                
+                // Reload page bitmaps to show flattened content
+                pageBitmaps.clear()
+                getPageBitmap(_uiState.value.currentPage)
+                
             } catch (e: Exception) {
+                // Try to recover renderer state
+                try { pdfRenderer.openDocument(Uri.parse(_uiState.value.documentPath)) } catch (_: Exception) {}
+                
                 _uiState.update { 
                     it.copy(
                         isFlattening = false,

@@ -70,7 +70,7 @@ class PdfAnnotationFlattener @Inject constructor(
      * @param textAnnotations Map of page index to list of text annotations on that page
      * @param outputUri Optional output URI (if null, creates new file)
      * @param replaceOriginal If true, replaces the original file
-     * @param renderScale The scale factor used when rendering pages (default 2f)
+     * @param renderScale The scale factor used when rendering pages (default 3f for high quality)
      * @return Result of the operation
      */
     suspend fun flattenAnnotations(
@@ -80,7 +80,7 @@ class PdfAnnotationFlattener @Inject constructor(
         textAnnotations: Map<Int, List<TextAnnotation>> = emptyMap(),
         outputUri: Uri? = null,
         replaceOriginal: Boolean = false,
-        renderScale: Float = 2f
+        renderScale: Float = 3f
     ): FlattenResult = mutex.withLock {
         withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
@@ -154,8 +154,8 @@ class PdfAnnotationFlattener @Inject constructor(
                             
                             android.util.Log.d("PdfAnnotationFlattener", "Page $pageIndex - Current: ${currentPageWidth}x${currentPageHeight}, Standard: ${standardPageWidth}x${standardPageHeight}, Bitmap: ${bitmapWidth}x${bitmapHeight}")
                             
-                            // Ensure reasonable bitmap size
-                            val maxSize = 4096
+                            // Ensure reasonable bitmap size (8192 allows higher quality intermediates)
+                            val maxSize = 8192
                             val actualBitmapWidth = bitmapWidth.coerceAtMost(maxSize)
                             val actualBitmapHeight = bitmapHeight.coerceAtMost(maxSize)
                             
@@ -232,9 +232,13 @@ class PdfAnnotationFlattener @Inject constructor(
                             
                             android.util.Log.d("PdfAnnotationFlattener", "Creating PDF page: ${standardPageWidth.toInt()}x${standardPageHeight.toInt()}, Bitmap: ${actualBitmapWidth}x${actualBitmapHeight}")
                             
-                            // Scale bitmap down from 1190x1684 to 595x842
+                            // Scale bitmap down to standard page size with high-quality filtering
                             val destRect = android.graphics.Rect(0, 0, standardPageWidth.toInt(), standardPageHeight.toInt())
-                            pdfPage.canvas.drawBitmap(bitmap, null, destRect, null)
+                            val scalePaint = Paint().apply {
+                                isFilterBitmap = true  // Bilinear filtering for smooth downscale
+                                isAntiAlias = true
+                            }
+                            pdfPage.canvas.drawBitmap(bitmap, null, destRect, scalePaint)
                             
                             pdfDocument.finishPage(pdfPage)
                             
@@ -601,8 +605,8 @@ class PdfAnnotationFlattener @Inject constructor(
             val bitmapWidth = (originalPageWidth * renderScale).toInt()
             val bitmapHeight = (originalPageHeight * renderScale).toInt()
             
-            // Ensure reasonable bitmap size
-            val maxSize = 4096
+            // Ensure reasonable bitmap size (8192 allows higher quality intermediates)
+            val maxSize = 8192
             val actualBitmapWidth = bitmapWidth.coerceAtMost(maxSize)
             val actualBitmapHeight = bitmapHeight.coerceAtMost(maxSize)
             
@@ -653,9 +657,13 @@ class PdfAnnotationFlattener @Inject constructor(
             
             val pdfPage = outputPdf.startPage(pageInfo)
             
-            // Scale the bitmap down to fit the standard page size
+            // Scale the bitmap down to fit the standard page size with high-quality filtering
             val destRect = android.graphics.Rect(0, 0, originalPageWidth.toInt(), originalPageHeight.toInt())
-            pdfPage.canvas.drawBitmap(bitmap, null, destRect, null)
+            val scalePaint = Paint().apply {
+                isFilterBitmap = true  // Bilinear filtering for smooth downscale
+                isAntiAlias = true
+            }
+            pdfPage.canvas.drawBitmap(bitmap, null, destRect, scalePaint)
             
             outputPdf.finishPage(pdfPage)
             

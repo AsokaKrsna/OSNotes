@@ -135,75 +135,78 @@ fun ToolPresetPopup(
                     }
                 }
                 
-                // Recent colors ribbon
-                if (recentColors.isNotEmpty()) {
-                    Text(
-                        "Recent",
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 11.sp
-                    )
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(recentColors) { color ->
-                            ColorCircle(
-                                color = color,
-                                isSelected = color == currentColor,
-                                onClick = { onColorSelected(color) }
-                            )
-                        }
-                    }
-                }
-                
-                // Color palette
-                Text(
-                    "Colors",
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 11.sp
-                )
-                
-                // Color grid - responsive layout
-                if (isHorizontal) {
-                    // Single row for horizontal toolbar
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(PRESET_COLORS) { color ->
-                            ColorCircle(
-                                color = color,
-                                isSelected = color == currentColor,
-                                onClick = { onColorSelected(color) }
-                            )
-                        }
-                    }
-                } else {
-                    // Grid layout for vertical toolbars
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            PRESET_COLORS.take(7).forEach { color ->
+                // Color sections — not relevant for erasers
+                if (tool != AnnotationTool.ERASER && tool != AnnotationTool.PIXEL_ERASER) {
+                    // Recent colors ribbon
+                    if (recentColors.isNotEmpty()) {
+                        Text(
+                            "Recent",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 11.sp
+                        )
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(recentColors) { color ->
                                 ColorCircle(
                                     color = color,
                                     isSelected = color == currentColor,
-                                    onClick = { onColorSelected(color) },
-                                    size = 28
+                                    onClick = { onColorSelected(color) }
                                 )
                             }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            PRESET_COLORS.drop(7).forEach { color ->
+                    }
+                    
+                    // Color palette
+                    Text(
+                        "Colors",
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 11.sp
+                    )
+                    
+                    // Color grid - responsive layout
+                    if (isHorizontal) {
+                        // Single row for horizontal toolbar
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(PRESET_COLORS) { color ->
                                 ColorCircle(
                                     color = color,
                                     isSelected = color == currentColor,
-                                    onClick = { onColorSelected(color) },
-                                    size = 28
+                                    onClick = { onColorSelected(color) }
                                 )
+                            }
+                        }
+                    } else {
+                        // Grid layout for vertical toolbars
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                PRESET_COLORS.take(7).forEach { color ->
+                                    ColorCircle(
+                                        color = color,
+                                        isSelected = color == currentColor,
+                                        onClick = { onColorSelected(color) },
+                                        size = 28
+                                    )
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                PRESET_COLORS.drop(7).forEach { color ->
+                                    ColorCircle(
+                                        color = color,
+                                        isSelected = color == currentColor,
+                                        onClick = { onColorSelected(color) },
+                                        size = 28
+                                    )
+                                }
                             }
                         }
                     }
                 }
                 
                 // Stroke width slider
-                if (tool != AnnotationTool.ERASER) {
+                if (tool != AnnotationTool.ERASER && tool != AnnotationTool.PIXEL_ERASER) {
                     Text(
                         "Size: ${currentWidth.toInt()}",
                         color = Color.White.copy(alpha = 0.6f),
@@ -287,6 +290,7 @@ private fun getToolDisplayName(tool: AnnotationTool): String = when (tool) {
     AnnotationTool.HIGHLIGHTER -> "Highlighter"
     AnnotationTool.HIGHLIGHTER_2 -> "Smart Highlighter"
     AnnotationTool.ERASER -> "Eraser"
+    AnnotationTool.PIXEL_ERASER -> "Pixel Eraser"
     AnnotationTool.LASSO -> "Lasso"
     AnnotationTool.TEXT -> "Text"
     AnnotationTool.SHAPES -> "Shapes"

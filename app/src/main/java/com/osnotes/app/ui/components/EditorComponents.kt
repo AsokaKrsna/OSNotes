@@ -139,9 +139,13 @@ fun GlassmorphicToolbar(
                         onToolClick = { tool ->
                             // Always call onToolSelected for SHAPES (EditorScreen handles shape picker)
                             // For Pen/Highlighter, show color preset popup on second tap
+                            // For Erasers, show size customization on second tap
                             if (tool == currentTool && tool.hasColorPresets()) {
                                 showPopupForTool = if (showPopupForTool == tool) null else tool
                                 showCustomizeFor = null
+                            } else if (tool == currentTool && (tool == AnnotationTool.ERASER || tool == AnnotationTool.PIXEL_ERASER)) {
+                                showCustomizeFor = if (showCustomizeFor == tool) null else tool
+                                showPopupForTool = null
                             } else {
                                 onToolSelected(tool)
                                 showPopupForTool = null
@@ -176,9 +180,13 @@ fun GlassmorphicToolbar(
                         onToolClick = { tool ->
                             // Always call onToolSelected for SHAPES (EditorScreen handles shape picker)
                             // For Pen/Highlighter, show color preset popup on second tap
+                            // For Erasers, show size customization on second tap
                             if (tool == currentTool && tool.hasColorPresets()) {
                                 showPopupForTool = if (showPopupForTool == tool) null else tool
                                 showCustomizeFor = null
+                            } else if (tool == currentTool && (tool == AnnotationTool.ERASER || tool == AnnotationTool.PIXEL_ERASER)) {
+                                showCustomizeFor = if (showCustomizeFor == tool) null else tool
+                                showPopupForTool = null
                             } else {
                                 onToolSelected(tool)
                                 showPopupForTool = null
@@ -356,7 +364,7 @@ private fun AnnotationTool.hasPresets(): Boolean = when (this) {
 private fun AnnotationTool.isCustomizable(): Boolean = when (this) {
     AnnotationTool.PEN, AnnotationTool.PEN_2,
     AnnotationTool.HIGHLIGHTER, AnnotationTool.HIGHLIGHTER_2,
-    AnnotationTool.ERASER, AnnotationTool.SHAPES -> true
+    AnnotationTool.ERASER, AnnotationTool.PIXEL_ERASER, AnnotationTool.SHAPES -> true
     else -> false
 }
 
@@ -416,7 +424,7 @@ private fun ToolbarContent(
         )
     }
     
-    // Eraser (always visible)
+    // Object Eraser (always visible)
     ToolButton(
         icon = Icons.Outlined.CleaningServices,
         label = "Eraser",
@@ -425,6 +433,18 @@ private fun ToolbarContent(
         onClick = { onToolClick(AnnotationTool.ERASER) },
         onLongPress = { onToolLongPress(AnnotationTool.ERASER) }
     )
+    
+    // Pixel Eraser (only when expanded) — distinct icon
+    AnimatedVisibility(visible = isExpanded) {
+        ToolButton(
+            icon = Icons.Default.AutoFixOff,
+            label = "Pixel",
+            isSelected = currentTool == AnnotationTool.PIXEL_ERASER,
+            hasPopupOpen = showPopupForTool == AnnotationTool.PIXEL_ERASER,
+            onClick = { onToolClick(AnnotationTool.PIXEL_ERASER) },
+            onLongPress = { onToolLongPress(AnnotationTool.PIXEL_ERASER) }
+        )
+    }
     
     // Lasso (only when expanded)
     AnimatedVisibility(visible = isExpanded) {
@@ -588,6 +608,8 @@ private fun ToolButton(
 
 /**
  * Waterdrop page indicator - small notch that expands on tap.
+ * When expanded, shows a slider to navigate pages quickly.
+ * Dismisses only via the Done button or tapping outside the indicator.
  */
 @Composable
 fun WaterdropPageIndicator(
@@ -625,17 +647,25 @@ fun WaterdropPageIndicator(
     val borderColor = if (isLightBackground) Color.Black.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.2f)
     val textColor = Color.White
     
-    AnimatedContent(
-        targetState = isExpanded,
-        modifier = modifier,
-        transitionSpec = {
-            fadeIn() + expandHorizontally(expandFrom = Alignment.End) togetherWith
-                fadeOut() + shrinkHorizontally(shrinkTowards = Alignment.End)
-        }
-    ) { expanded ->
-        if (expanded) {
+    // When expanded, use a full-screen Box with scrim for outside-click dismiss
+    if (isExpanded) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Transparent scrim to catch outside clicks and dismiss the indicator
             Box(
                 modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures { onExpandToggle() }
+                    }
+            )
+            
+            // The expanded indicator panel, positioned using the same modifier as the collapsed one
+            Box(
+                modifier = modifier
+                    .pointerInput(Unit) {
+                        // Consume all taps on the indicator itself so they don't reach the scrim
+                        detectTapGestures { /* consumed */ }
+                    }
                     .clip(shape)
                     .background(containerBrush)
                     .border(1.dp, borderColor, shape)
@@ -670,29 +700,29 @@ fun WaterdropPageIndicator(
                     }
                 }
             }
-        } else {
-            Box(
-                modifier = Modifier
-                    .clip(shape)
-                    .background(if (isLightBackground) Color.Black.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.1f))
-                    .border(1.dp, borderColor, shape)
-                    .clickable { onExpandToggle() }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "$currentPage",
-                        color = textColor,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-                    Text(
-                        "/$totalPages",
-                        color = textColor.copy(alpha = 0.5f),
-                        fontSize = 10.sp
-                    )
-                }
+        }
+    } else {
+        Box(
+            modifier = modifier
+                .clip(shape)
+                .background(if (isLightBackground) Color.Black.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.1f))
+                .border(1.dp, borderColor, shape)
+                .clickable { onExpandToggle() }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "$currentPage",
+                    color = textColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    "/$totalPages",
+                    color = textColor.copy(alpha = 0.5f),
+                    fontSize = 10.sp
+                )
             }
         }
     }

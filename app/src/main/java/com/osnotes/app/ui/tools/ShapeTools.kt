@@ -137,7 +137,7 @@ fun ShapeCanvas(
                         return when (event.action) {
                             MotionEvent.ACTION_DOWN -> {
                                 // Check if eraser is active
-                                if (currentToolState.currentTool == com.osnotes.app.domain.model.AnnotationTool.ERASER) {
+                                if (currentToolState.currentTool == com.osnotes.app.domain.model.AnnotationTool.ERASER || currentToolState.currentTool == com.osnotes.app.domain.model.AnnotationTool.PIXEL_ERASER) {
                                     // Handle eraser: check hits for BOTH shapes and strokes
                                     val shapeHit = checkShapeEraserHit(event.x, event.y, currentShapes, currentOnShapeErase, currentToolState.eraserWidth)
                                     val strokeHit = checkStrokeEraserHit(event.x, event.y, currentStrokes, currentOnStrokeErase, currentToolState.eraserWidth)
@@ -154,7 +154,7 @@ fun ShapeCanvas(
                             }
                             MotionEvent.ACTION_MOVE -> {
                                 // For eraser, continuously check hits
-                                if (currentToolState.currentTool == com.osnotes.app.domain.model.AnnotationTool.ERASER) {
+                                if (currentToolState.currentTool == com.osnotes.app.domain.model.AnnotationTool.ERASER || currentToolState.currentTool == com.osnotes.app.domain.model.AnnotationTool.PIXEL_ERASER) {
                                     checkShapeEraserHit(event.x, event.y, currentShapes, currentOnShapeErase, currentToolState.eraserWidth)
                                     checkStrokeEraserHit(event.x, event.y, currentStrokes, currentOnStrokeErase, currentToolState.eraserWidth)
                                     true
@@ -169,7 +169,7 @@ fun ShapeCanvas(
                                 parent?.requestDisallowInterceptTouchEvent(false)
                                 currentOnStylusActiveChange(false)
                                 
-                                if (currentToolState.currentTool != com.osnotes.app.domain.model.AnnotationTool.ERASER 
+                                if (currentToolState.currentTool != com.osnotes.app.domain.model.AnnotationTool.ERASER && currentToolState.currentTool != com.osnotes.app.domain.model.AnnotationTool.PIXEL_ERASER
                                     && isDrawing && startPoint != null && currentPoint != null) {
                                     val start = startPoint!!
                                     val end = currentPoint!!
