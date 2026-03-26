@@ -80,7 +80,7 @@ class PdfAnnotationFlattener @Inject constructor(
         textAnnotations: Map<Int, List<TextAnnotation>> = emptyMap(),
         outputUri: Uri? = null,
         replaceOriginal: Boolean = false,
-        renderScale: Float = 3f
+        renderScale: Float = 2f
     ): FlattenResult = mutex.withLock {
         withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
@@ -139,39 +139,27 @@ class PdfAnnotationFlattener @Inject constructor(
                             val currentPageWidth = bounds.x1 - bounds.x0
                             val currentPageHeight = bounds.y1 - bounds.y0
                             
-                            // Detect if this page is already at rendered size or needs scaling
-                            // If page is already ~1190x1684, it's been pre-rendered, so normalize back to 595x842
-                            // If page is ~595x842, it's original size
-                            val isAlreadyScaled = currentPageWidth > 1000f // Threshold to detect pre-rendered pages
+                            // Render bitmap at renderScale of the actual page dimensions.
+                            // Strokes are stored in bitmap-space at (pageWidth * renderScale),
+                            // so the bitmap must match that coordinate space exactly.
+                            val bitmapWidth = (currentPageWidth * renderScale).toInt()
+                            val bitmapHeight = (currentPageHeight * renderScale).toInt()
                             
-                            // Always normalize to standard PDF size (595x842 for A4)
-                            val standardPageWidth = if (isAlreadyScaled) currentPageWidth / 2f else currentPageWidth
-                            val standardPageHeight = if (isAlreadyScaled) currentPageHeight / 2f else currentPageHeight
+                            android.util.Log.d("PdfAnnotationFlattener", "Page $pageIndex - PDF: ${currentPageWidth}x${currentPageHeight}, Bitmap: ${bitmapWidth}x${bitmapHeight}")
                             
-                            // Render bitmap at 2x for quality
-                            val bitmapWidth = (standardPageWidth * renderScale).toInt()
-                            val bitmapHeight = (standardPageHeight * renderScale).toInt()
-                            
-                            android.util.Log.d("PdfAnnotationFlattener", "Page $pageIndex - Current: ${currentPageWidth}x${currentPageHeight}, Standard: ${standardPageWidth}x${standardPageHeight}, Bitmap: ${bitmapWidth}x${bitmapHeight}")
-                            
-                            // Ensure reasonable bitmap size (8192 allows higher quality intermediates)
+                            // Ensure reasonable bitmap size
                             val maxSize = 8192
                             val actualBitmapWidth = bitmapWidth.coerceAtMost(maxSize)
                             val actualBitmapHeight = bitmapHeight.coerceAtMost(maxSize)
                             
-                            // Log detailed coordinate analysis
+                            // Log coordinate analysis for debugging
                             strokes[pageIndex]?.firstOrNull()?.let { stroke ->
                                 val firstPoint = stroke.points.firstOrNull()
                                 android.util.Log.d("PdfAnnotationFlattener", "=== COORDINATE ANALYSIS PAGE $pageIndex ===")
-                                android.util.Log.d("PdfAnnotationFlattener", "Current PDF page size: ${currentPageWidth} x ${currentPageHeight}")
-                                android.util.Log.d("PdfAnnotationFlattener", "Standard PDF size: ${standardPageWidth} x ${standardPageHeight}")
+                                android.util.Log.d("PdfAnnotationFlattener", "PDF page size: ${currentPageWidth} x ${currentPageHeight}")
                                 android.util.Log.d("PdfAnnotationFlattener", "Bitmap size: ${actualBitmapWidth} x ${actualBitmapHeight}")
                                 android.util.Log.d("PdfAnnotationFlattener", "Stroke coordinate: (${firstPoint?.x}, ${firstPoint?.y})")
                                 android.util.Log.d("PdfAnnotationFlattener", "Stroke width: ${stroke.strokeWidth}")
-                                android.util.Log.d("PdfAnnotationFlattener", "Ratio to standard PDF width: ${firstPoint?.x?.div(standardPageWidth)}")
-                                android.util.Log.d("PdfAnnotationFlattener", "Ratio to bitmap width: ${firstPoint?.x?.div(actualBitmapWidth)}")
-                                android.util.Log.d("PdfAnnotationFlattener", "Ratio to current PDF width: ${firstPoint?.x?.div(currentPageWidth)}")
-                                android.util.Log.d("PdfAnnotationFlattener", "Is page pre-scaled: $isAlreadyScaled")
                             }
                             
                             if (actualBitmapWidth <= 0 || actualBitmapHeight <= 0) {
@@ -186,8 +174,8 @@ class PdfAnnotationFlattener @Inject constructor(
                                 Bitmap.Config.ARGB_8888
                             )
                             
-                            // Render PDF page to bitmap
-                            val matrix = Matrix(if (isAlreadyScaled) renderScale / 2f else renderScale)
+                            // Render PDF page to bitmap at renderScale
+                            val matrix = Matrix(renderScale)
                             val device = AndroidDrawDevice(bitmap, 0, 0, 0, 0, bitmap.width, bitmap.height)
                             page.run(device, matrix, null)
                             device.close()
@@ -196,7 +184,7 @@ class PdfAnnotationFlattener @Inject constructor(
                             // Draw annotations on top of the bitmap
                             val canvas = Canvas(bitmap)
                             
-                            // Draw strokes
+                            // Draw strokes (stored in bitmap coordinate space, drawn as-is)
                             strokes[pageIndex]?.let { pageStrokes ->
                                 if (pageStrokes.isNotEmpty()) {
                                     android.util.Log.d("PdfAnnotationFlattener", "Drawing ${pageStrokes.size} strokes on page $pageIndex")
@@ -220,22 +208,26 @@ class PdfAnnotationFlattener @Inject constructor(
                                 }
                             }
                             
-                            // Create PDF page at BITMAP resolution to avoid quality-destroying downscale.
-                            // Android's PdfDocument is 72 DPI (1 point = 1 pixel), so creating
-                            // the page at bitmap size means the bitmap is drawn 1:1 — no quality loss.
-                            // The isAlreadyScaled detection handles these larger pages on reopen.
+                            // Create PDF page at ORIGINAL page size to prevent unbounded growth.
+                            // The high-res bitmap is downscaled into this with bilinear filtering.
+                            // This ensures repeated flattens produce stable page dimensions.
                             val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(
-                                actualBitmapWidth,
-                                actualBitmapHeight,
+                                currentPageWidth.toInt(),
+                                currentPageHeight.toInt(),
                                 pageIndex + 1
                             ).create()
                             
                             val pdfPage = pdfDocument.startPage(pageInfo)
                             
-                            android.util.Log.d("PdfAnnotationFlattener", "Creating PDF page at bitmap resolution: ${actualBitmapWidth}x${actualBitmapHeight}")
+                            android.util.Log.d("PdfAnnotationFlattener", "Creating PDF page at original size: ${currentPageWidth.toInt()}x${currentPageHeight.toInt()}, downscaling from ${actualBitmapWidth}x${actualBitmapHeight}")
                             
-                            // Draw bitmap 1:1 — no scaling, no quality loss
-                            pdfPage.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                            // Downscale bitmap to fit original page size with high quality
+                            val destRect = Rect(0, 0, currentPageWidth.toInt(), currentPageHeight.toInt())
+                            val scalePaint = Paint().apply {
+                                isFilterBitmap = true  // Bilinear filtering for smooth downscale
+                                isAntiAlias = true
+                            }
+                            pdfPage.canvas.drawBitmap(bitmap, null, destRect, scalePaint)
                             
                             pdfDocument.finishPage(pdfPage)
                             
