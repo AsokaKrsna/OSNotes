@@ -922,8 +922,10 @@ class AnnotationManager @Inject constructor(
             
             if (stroke.isHighlighter) {
                 paint.alpha = 102 // ~40% opacity
+                paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DARKEN)
             } else {
                 paint.alpha = 255
+                paint.xfermode = null
             }
             
             val path = Path()

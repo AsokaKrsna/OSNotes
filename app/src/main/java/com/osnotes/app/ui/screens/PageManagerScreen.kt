@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -36,6 +37,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.osnotes.app.ui.viewmodels.PageManagerViewModel
+import com.osnotes.app.ui.components.AddPageDialog
+import com.osnotes.app.ui.components.PageTemplate
+import com.osnotes.app.ui.components.PaperVariant
+import com.osnotes.app.ui.components.InsertPosition
 import kotlin.math.roundToInt
 
 /**
@@ -58,6 +63,7 @@ fun PageManagerScreen(
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     var draggedPagePosition by remember { mutableStateOf(Offset.Zero) }
+    var showAddPageDialog by remember { mutableStateOf(false) }
     
     // Check if annotations are flattened (annotation count is 0)
     val hasNonFlattenedAnnotations = annotationCount > 0
@@ -118,6 +124,18 @@ fun PageManagerScreen(
     ) {
         Scaffold(
             containerColor = Color.Transparent,
+            floatingActionButton = {
+                if (!hasNonFlattenedAnnotations) {
+                    FloatingActionButton(
+                        onClick = { showAddPageDialog = true },
+                        containerColor = Color(0xFF6366F1),
+                        contentColor = Color.White,
+                        shape = CircleShape
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Page")
+                    }
+                }
+            },
             topBar = {
                 TopAppBar(
                     title = {
@@ -289,6 +307,39 @@ fun PageManagerScreen(
                     }
                 }
             }
+        }
+        
+        // Add Page Dialog
+        if (showAddPageDialog) {
+            AddPageDialog(
+                onDismiss = { showAddPageDialog = false },
+                onAddPage = { template, variant, position ->
+                    val templateName = template.templateName(variant)
+                    val location = when (position) {
+                        InsertPosition.START -> PageLocation.START
+                        InsertPosition.AFTER_CURRENT -> PageLocation.CURRENT
+                        InsertPosition.END -> PageLocation.END
+                    }
+                    performActionWithCheck {
+                        viewModel.addPage(templateName, location)
+                    }
+                    showAddPageDialog = false
+                },
+                currentPage = (uiState.currentPageIndex + 1).coerceAtLeast(1),
+                totalPages = uiState.pages.size,
+                customTemplates = uiState.customTemplates,
+                onAddCustomTemplatePage = { customTemplate, position ->
+                    val location = when (position) {
+                        InsertPosition.START -> PageLocation.START
+                        InsertPosition.AFTER_CURRENT -> PageLocation.CURRENT
+                        InsertPosition.END -> PageLocation.END
+                    }
+                    performActionWithCheck {
+                        viewModel.addPage(customTemplate.id, location)
+                    }
+                    showAddPageDialog = false
+                }
+            )
         }
         
         // Delete Confirmation
@@ -872,171 +923,6 @@ private fun calculateTargetIndex(dragPosition: Offset, currentIndex: Int): Int? 
     
     val newIndex = currentIndex + positionChange
     return if (newIndex != currentIndex) newIndex else null
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AddPageDialog(
-    onDismiss: () -> Unit,
-    onAddPage: (template: String, location: PageLocation) -> Unit,
-    customTemplates: List<com.osnotes.app.domain.model.CustomTemplate> = emptyList()
-) {
-    var selectedTemplate by remember { mutableStateOf("blank") }
-    var selectedLocation by remember { mutableStateOf(PageLocation.END) }
-    
-    val predefinedTemplates = listOf(
-        "blank" to "Blank",
-        "grid" to "Grid",
-        "dotgrid" to "Dot Grid",
-        "lined" to "Lined",
-        "cornell" to "Cornell Notes",
-        "meeting" to "Meeting Minutes"
-    )
-    
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add New Page") },
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                // Template selection
-                Text(
-                    "Templates",
-                    color = Color.White.copy(alpha = 0.6f),
-                    style = MaterialTheme.typography.labelMedium
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // Predefined templates
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.height(150.dp)
-                ) {
-                    items(predefinedTemplates.size) { index ->
-                        val (id, name) = predefinedTemplates[index]
-                        TemplateOption(
-                            name = name,
-                            isSelected = selectedTemplate == id,
-                            onClick = { selectedTemplate = id }
-                        )
-                    }
-                }
-                
-                // Custom templates section
-                if (customTemplates.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "My Custom Templates",
-                        color = Color.White.copy(alpha = 0.6f),
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.height(
-                            ((customTemplates.size + 1) / 2 * 60).coerceAtMost(150).dp
-                        )
-                    ) {
-                        items(customTemplates.size) { index ->
-                            val template = customTemplates[index]
-                            TemplateOption(
-                                name = template.name,
-                                isSelected = selectedTemplate == template.id,
-                                onClick = { selectedTemplate = template.id },
-                                backgroundColor = androidx.compose.ui.graphics.Color(template.backgroundColor)
-                            )
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Location selection
-                Text(
-                    "Insert Location",
-                    color = Color.White.copy(alpha = 0.6f),
-                    style = MaterialTheme.typography.labelMedium
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Column {
-                    PageLocation.values().forEach { location ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedLocation = location }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = selectedLocation == location,
-                                onClick = { selectedLocation = location },
-                                colors = RadioButtonDefaults.colors(
-                                    selectedColor = Color(0xFF6366F1)
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                when (location) {
-                                    PageLocation.START -> "At the beginning"
-                                    PageLocation.CURRENT -> "After current page"
-                                    PageLocation.END -> "At the end"
-                                },
-                                color = Color.White
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onAddPage(selectedTemplate, selectedLocation) }
-            ) {
-                Text("Add", color = Color(0xFF6366F1))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color.White.copy(alpha = 0.6f))
-            }
-        },
-        containerColor = Color(0xFF1A1A1A),
-        titleContentColor = Color.White,
-        textContentColor = Color.White
-    )
-}
-
-@Composable
-private fun TemplateOption(
-    name: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    backgroundColor: Color? = null
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(8.dp),
-        color = if (isSelected) Color(0xFF6366F1).copy(alpha = 0.2f) 
-                else backgroundColor?.copy(alpha = 0.3f) ?: Color.White.copy(alpha = 0.1f),
-        border = if (isSelected) BorderStroke(2.dp, Color(0xFF6366F1)) else null,
-        modifier = Modifier.aspectRatio(0.707f)
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                name,
-                color = if (isSelected) Color(0xFF6366F1) else Color.White,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-            )
-        }
-    }
 }
 
 enum class PageLocation {

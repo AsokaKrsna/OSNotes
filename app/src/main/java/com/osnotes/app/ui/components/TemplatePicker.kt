@@ -854,31 +854,71 @@ fun CreateNewWithTemplateDialog(
                                 )
                             }
                         } else {
-                            // Show predefined template
+                            // Show predefined template with variant-aware preview
                             val template = selectedTemplate ?: PageTemplate.BLANK
+                            val variantBgColor = when (selectedVariant) {
+                                PaperVariant.DARK -> Color(0xFF2A2A2A)
+                                PaperVariant.OFFWHITE -> Color(0xFFF5F0E8)
+                                PaperVariant.REGULAR -> template.color
+                            }
+                            val variantIconTint = when (selectedVariant) {
+                                PaperVariant.DARK -> Color.White.copy(alpha = 0.7f)
+                                PaperVariant.OFFWHITE -> Color(0xFF8B7355)
+                                PaperVariant.REGULAR -> Color.DarkGray
+                            }
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(template.color),
+                                    .background(variantBgColor),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     template.icon,
                                     contentDescription = null,
                                     modifier = Modifier.size(22.dp),
-                                    tint = Color.DarkGray
+                                    tint = variantIconTint
                                 )
                             }
                             
                             Spacer(modifier = Modifier.width(12.dp))
                             
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    template.displayName,
-                                    fontWeight = FontWeight.Medium,
-                                    color = onSurfaceColor
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        template.displayName,
+                                        fontWeight = FontWeight.Medium,
+                                        color = onSurfaceColor
+                                    )
+                                    if (selectedVariant != PaperVariant.REGULAR) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = when (selectedVariant) {
+                                                PaperVariant.DARK -> Color(0xFF374151)
+                                                PaperVariant.OFFWHITE -> Color(0xFFD4C5A9)
+                                                else -> Color.Transparent
+                                            }
+                                        ) {
+                                            Text(
+                                                selectedVariant.name.lowercase()
+                                                    .replaceFirstChar { it.uppercase() },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = when (selectedVariant) {
+                                                    PaperVariant.DARK -> Color.White.copy(alpha = 0.8f)
+                                                    PaperVariant.OFFWHITE -> Color(0xFF5D4E37)
+                                                    else -> onSurfaceColor
+                                                },
+                                                modifier = Modifier.padding(
+                                                    horizontal = 6.dp,
+                                                    vertical = 2.dp
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
                                 Text(
                                     template.description,
                                     style = MaterialTheme.typography.bodySmall,

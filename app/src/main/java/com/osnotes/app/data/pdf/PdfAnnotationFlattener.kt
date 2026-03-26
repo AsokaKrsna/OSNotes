@@ -339,9 +339,10 @@ class PdfAnnotationFlattener @Inject constructor(
                 strokeJoin = Paint.Join.ROUND
                 isAntiAlias = true
                 
-                // Set alpha for highlighters
+                // Set alpha for highlighters (must match InkingCanvas: 0.4f alpha + BlendMode.Darken)
                 if (stroke.isHighlighter) {
-                    alpha = 128 // 50% opacity
+                    alpha = 102 // 40% opacity (0.4 * 255) — matches InkingCanvas
+                    xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DARKEN)
                 }
             }
             

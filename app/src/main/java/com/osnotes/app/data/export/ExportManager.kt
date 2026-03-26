@@ -239,6 +239,7 @@ class ExportManager @Inject constructor(
                 
                 if (stroke.isHighlighter) {
                     alpha = (255 * 0.4f).toInt()
+                    xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DARKEN)
                 }
             }
             
