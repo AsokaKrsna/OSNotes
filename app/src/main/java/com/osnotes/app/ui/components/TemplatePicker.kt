@@ -26,6 +26,19 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 
 /**
+ * Paper color variants for templates.
+ */
+enum class PaperVariant(
+    val displayName: String,
+    val suffix: String,
+    val bgPreview: Color
+) {
+    REGULAR("Regular", "", Color(0xFFF5F5F5)),
+    OFFWHITE("Off-white", "_OFFWHITE", Color(0xFFFDF8F0)),
+    DARK("Dark", "_DARK", Color(0xFF1A1A1E))
+}
+
+/**
  * Template types for new note pages.
  */
 enum class PageTemplate(
@@ -41,7 +54,18 @@ enum class PageTemplate(
     CORNELL("Cornell", "Cornell notes layout", Icons.Outlined.ViewAgenda, Color(0xFFFFF3E0)),
     ISOMETRIC("Isometric", "Isometric dot grid", Icons.Outlined.Hexagon, Color(0xFFF3E5F5)),
     MUSIC("Music", "Music staff lines", Icons.Outlined.MusicNote, Color(0xFFE0F7FA)),
-    ENGINEERING("Engineering", "Engineering paper", Icons.Outlined.Engineering, Color(0xFFE8EAF6))
+    ENGINEERING("Engineering", "Engineering paper", Icons.Outlined.Engineering, Color(0xFFE8EAF6)),
+    TODO("To-Do", "Checkbox task list", Icons.Outlined.CheckBox, Color(0xFFE8F5E9)),
+    PLANNER("Planner", "Daily time planner", Icons.Outlined.Schedule, Color(0xFFE1F5FE)),
+    STORYBOARD("Storyboard", "Frame grid layout", Icons.Outlined.Movie, Color(0xFFFFF9C4)),
+    CALLIGRAPHY("Calligraphy", "Handwriting guides", Icons.Outlined.Draw, Color(0xFFF3E5F5)),
+    HEXAGONAL("Hexagonal", "Hex grid pattern", Icons.Outlined.Hexagon, Color(0xFFE0F2F1)),
+    FOUR_QUADRANT("4-Quadrant", "2×2 quadrant layout", Icons.Outlined.GridView, Color(0xFFFFE0B2));
+    
+    /** Returns the full template name string for the rendering layer. */
+    fun templateName(variant: PaperVariant = PaperVariant.REGULAR): String {
+        return name + variant.suffix
+    }
 }
 
 /**
@@ -51,7 +75,7 @@ enum class PageTemplate(
 @Composable
 fun TemplatePickerDialog(
     onDismiss: () -> Unit,
-    onTemplateSelected: (PageTemplate) -> Unit,
+    onTemplateSelected: (PageTemplate, PaperVariant) -> Unit,
     title: String = "Choose Template",
     customTemplates: List<com.osnotes.app.domain.model.CustomTemplate> = emptyList(),
     onCustomTemplateSelected: ((com.osnotes.app.domain.model.CustomTemplate) -> Unit)? = null
@@ -68,7 +92,7 @@ fun TemplatePickerDialog(
             Column(
                 modifier = Modifier
                     .padding(24.dp)
-                    .heightIn(max = 500.dp)
+                    .heightIn(max = 560.dp)
             ) {
                 Text(
                     title,
@@ -77,7 +101,61 @@ fun TemplatePickerDialog(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Paper variant selector
+                var selectedVariant by remember { mutableStateOf(PaperVariant.REGULAR) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    PaperVariant.values().forEach { variant ->
+                        val isSelected = selectedVariant == variant
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primary
+                                    else Color.Transparent
+                                )
+                                .clickable { selectedVariant = variant }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(12.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(variant.bgPreview)
+                                        .then(
+                                            if (variant == PaperVariant.REGULAR)
+                                                Modifier.border(0.5.dp, Color.Gray.copy(alpha = 0.4f), RoundedCornerShape(50))
+                                            else Modifier
+                                        )
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    variant.displayName,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
                 
                 androidx.compose.foundation.lazy.LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -94,13 +172,14 @@ fun TemplatePickerDialog(
                             columns = GridCells.Fixed(3),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.height(200.dp)
+                            modifier = Modifier.height(380.dp)
                         ) {
                             items(PageTemplate.values().toList()) { template ->
                                 TemplateCard(
                                     template = template,
+                                    variant = selectedVariant,
                                     onClick = { 
-                                        onTemplateSelected(template)
+                                        onTemplateSelected(template, selectedVariant)
                                         onDismiss()
                                     }
                                 )
@@ -210,14 +289,35 @@ private fun Color.luminance(): Float {
 @Composable
 private fun TemplateCard(
     template: PageTemplate,
+    variant: PaperVariant = PaperVariant.REGULAR,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(16.dp)
+    val cardBg = when (variant) {
+        PaperVariant.REGULAR -> template.color
+        PaperVariant.OFFWHITE -> Color(0xFFF5EDE0)
+        PaperVariant.DARK -> Color(0xFF2A2A2E)
+    }
+    val previewBg = when (variant) {
+        PaperVariant.REGULAR -> Color.White.copy(alpha = 0.9f)
+        PaperVariant.OFFWHITE -> Color(0xFFFDF8F0)
+        PaperVariant.DARK -> Color(0xFF1A1A1E)
+    }
+    val lineColor = when (variant) {
+        PaperVariant.REGULAR -> Color(0xFFBDBDBD)
+        PaperVariant.OFFWHITE -> Color(0xFFC8BBA8)
+        PaperVariant.DARK -> Color(0xFF505058)
+    }
+    val textColor = when (variant) {
+        PaperVariant.REGULAR -> Color.DarkGray
+        PaperVariant.OFFWHITE -> Color(0xFF6B5E4D)
+        PaperVariant.DARK -> Color(0xFFB0B0B8)
+    }
     
     Column(
         modifier = Modifier
             .clip(shape)
-            .background(template.color)
+            .background(cardBg)
             .clickable { onClick() }
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -227,17 +327,14 @@ private fun TemplateCard(
             modifier = Modifier
                 .size(48.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(
-                    Color.White.copy(alpha = 0.9f)
-                ),
+                .background(previewBg),
             contentAlignment = Alignment.Center
         ) {
             when (template) {
                 PageTemplate.BLANK -> {
-                    // Just white
+                    // Just background color
                 }
                 PageTemplate.LINED -> {
-                    // Lines preview
                     Column(
                         modifier = Modifier.padding(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -247,22 +344,20 @@ private fun TemplateCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(1.dp)
-                                    .background(Color(0xFFBDBDBD))
+                                    .background(lineColor)
                             )
                         }
                     }
                 }
                 PageTemplate.GRID -> {
-                    // Grid preview
                     Icon(
                         Icons.Outlined.GridOn,
                         contentDescription = null,
                         modifier = Modifier.size(32.dp),
-                        tint = Color(0xFFBDBDBD)
+                        tint = lineColor
                     )
                 }
                 PageTemplate.DOTTED -> {
-                    // Dots preview
                     Column(
                         modifier = Modifier.padding(4.dp),
                         verticalArrangement = Arrangement.SpaceEvenly
@@ -277,7 +372,7 @@ private fun TemplateCard(
                                         modifier = Modifier
                                             .size(4.dp)
                                             .clip(RoundedCornerShape(50))
-                                            .background(Color(0xFFBDBDBD))
+                                            .background(lineColor)
                                     )
                                 }
                             }
@@ -289,7 +384,7 @@ private fun TemplateCard(
                         template.icon,
                         contentDescription = null,
                         modifier = Modifier.size(32.dp),
-                        tint = Color(0xFF757575)
+                        tint = lineColor
                     )
                 }
             }
@@ -301,7 +396,7 @@ private fun TemplateCard(
             template.displayName,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            color = Color.DarkGray,
+            color = textColor,
             textAlign = TextAlign.Center
         )
     }
@@ -313,17 +408,19 @@ private fun TemplateCard(
 @Composable
 fun CreateNewNoteDialog(
     onDismiss: () -> Unit,
-    onCreateNote: (String, PageTemplate) -> Unit
+    onCreateNote: (String, PageTemplate, PaperVariant) -> Unit
 ) {
     var noteName by remember { mutableStateOf("") }
     var showTemplatePicker by remember { mutableStateOf(false) }
     var selectedTemplate by remember { mutableStateOf(PageTemplate.BLANK) }
+    var selectedVariant by remember { mutableStateOf(PaperVariant.REGULAR) }
     
     if (showTemplatePicker) {
         TemplatePickerDialog(
             onDismiss = { showTemplatePicker = false },
-            onTemplateSelected = { 
-                selectedTemplate = it
+            onTemplateSelected = { template, variant ->
+                selectedTemplate = template
+                selectedVariant = variant
                 showTemplatePicker = false
             },
             title = "Choose Page Template"
@@ -384,7 +481,7 @@ fun CreateNewNoteDialog(
             Button(
                 onClick = {
                     if (noteName.isNotBlank()) {
-                        onCreateNote(noteName.trim(), selectedTemplate)
+                        onCreateNote(noteName.trim(), selectedTemplate, selectedVariant)
                         onDismiss()
                     }
                 },
@@ -417,7 +514,7 @@ enum class InsertPosition {
 @Composable
 fun AddPageDialog(
     onDismiss: () -> Unit,
-    onAddPage: (PageTemplate, InsertPosition) -> Unit,
+    onAddPage: (PageTemplate, PaperVariant, InsertPosition) -> Unit,
     currentPage: Int,
     totalPages: Int,
     customTemplates: List<com.osnotes.app.domain.model.CustomTemplate> = emptyList(),
@@ -425,14 +522,16 @@ fun AddPageDialog(
 ) {
     var showTemplatePicker by remember { mutableStateOf(false) }
     var selectedTemplate by remember { mutableStateOf<PageTemplate?>(PageTemplate.BLANK) }
+    var selectedVariant by remember { mutableStateOf(PaperVariant.REGULAR) }
     var selectedCustomTemplate by remember { mutableStateOf<com.osnotes.app.domain.model.CustomTemplate?>(null) }
     var insertPosition by remember { mutableStateOf(InsertPosition.AFTER_CURRENT) }
     
     if (showTemplatePicker) {
         TemplatePickerDialog(
             onDismiss = { showTemplatePicker = false },
-            onTemplateSelected = { 
-                selectedTemplate = it
+            onTemplateSelected = { template, variant ->
+                selectedTemplate = template
+                selectedVariant = variant
                 selectedCustomTemplate = null
                 showTemplatePicker = false
             },
@@ -551,7 +650,7 @@ fun AddPageDialog(
                     if (selectedCustomTemplate != null && onAddCustomTemplatePage != null) {
                         onAddCustomTemplatePage(selectedCustomTemplate!!, insertPosition)
                     } else {
-                        onAddPage(selectedTemplate ?: PageTemplate.BLANK, insertPosition)
+                        onAddPage(selectedTemplate ?: PageTemplate.BLANK, selectedVariant, insertPosition)
                     }
                 }
             ) {
@@ -597,7 +696,7 @@ private fun InsertOption(
 @Composable
 fun CreateNewWithTemplateDialog(
     onDismiss: () -> Unit,
-    onCreateNote: (String, PageTemplate) -> Unit,
+    onCreateNote: (String, PageTemplate, PaperVariant) -> Unit,
     onCreateFolder: (String) -> Unit,
     onNavigateToTemplateBuilder: (() -> Unit)? = null,
     customTemplates: List<com.osnotes.app.domain.model.CustomTemplate> = emptyList(),
@@ -607,6 +706,7 @@ fun CreateNewWithTemplateDialog(
     var name by remember { mutableStateOf("") }
     var showTemplatePicker by remember { mutableStateOf(false) }
     var selectedTemplate by remember { mutableStateOf<PageTemplate?>(PageTemplate.BLANK) }
+    var selectedVariant by remember { mutableStateOf(PaperVariant.REGULAR) }
     var selectedCustomTemplate by remember { mutableStateOf<com.osnotes.app.domain.model.CustomTemplate?>(null) }
     
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -617,8 +717,9 @@ fun CreateNewWithTemplateDialog(
     if (showTemplatePicker) {
         TemplatePickerDialog(
             onDismiss = { showTemplatePicker = false },
-            onTemplateSelected = { 
-                selectedTemplate = it
+            onTemplateSelected = { template, variant ->
+                selectedTemplate = template
+                selectedVariant = variant
                 selectedCustomTemplate = null
                 showTemplatePicker = false
             },
@@ -814,7 +915,7 @@ fun CreateNewWithTemplateDialog(
                                     if (selectedCustomTemplate != null && onCreateNoteWithCustomTemplate != null) {
                                         onCreateNoteWithCustomTemplate(name.trim(), selectedCustomTemplate!!)
                                     } else {
-                                        onCreateNote(name.trim(), selectedTemplate ?: PageTemplate.BLANK)
+                                        onCreateNote(name.trim(), selectedTemplate ?: PageTemplate.BLANK, selectedVariant)
                                     }
                                 } else {
                                     onCreateFolder(name.trim())

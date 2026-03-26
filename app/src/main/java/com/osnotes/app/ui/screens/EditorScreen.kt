@@ -101,8 +101,8 @@ fun EditorScreen(
     if (showAddPageDialog) {
         AddPageDialog(
             onDismiss = { showAddPageDialog = false },
-            onAddPage = { template, position ->
-                viewModel.addPage(template.name, position)
+            onAddPage = { template, variant, position ->
+                viewModel.addPage(template.templateName(variant), position)
                 showAddPageDialog = false
             },
             currentPage = pagerState.currentPage + 1,

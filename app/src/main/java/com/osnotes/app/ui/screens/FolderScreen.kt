@@ -26,7 +26,8 @@ import com.osnotes.app.ui.components.GlassmorphicSurface
 import com.osnotes.app.ui.components.NoteCard
 import com.osnotes.app.ui.components.FolderItem
 import com.osnotes.app.ui.components.CreateNewWithTemplateDialog
-import com.osnotes.app.ui.components.CreateNewWithTemplateDialog
+import com.osnotes.app.ui.components.PageTemplate
+import com.osnotes.app.ui.components.PaperVariant
 import com.osnotes.app.ui.theme.AppColors
 import com.osnotes.app.ui.viewmodels.FolderViewModel
 
@@ -266,8 +267,8 @@ fun FolderScreen(
         if (showCreateDialog) {
             CreateNewWithTemplateDialog(
                 onDismiss = { showCreateDialog = false },
-                onCreateNote = { name, template ->
-                    viewModel.createNote(name, template.name)
+                onCreateNote = { name, template, variant ->
+                    viewModel.createNote(name, template.templateName(variant))
                     showCreateDialog = false
                 },
                 onCreateFolder = { name ->

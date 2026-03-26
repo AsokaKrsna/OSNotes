@@ -584,7 +584,8 @@ class MuPdfRenderer @Inject constructor(
     }
     
     /**
-     * Draws a template pattern on a canvas.
+     * Draws a template pattern on a canvas (simplified preview).
+     * Supports color variants via suffix: LINED, LINED_OFFWHITE, LINED_DARK
      */
     private fun drawTemplateOnCanvas(
         canvas: android.graphics.Canvas,
@@ -592,68 +593,169 @@ class MuPdfRenderer @Inject constructor(
         width: Float,
         height: Float
     ) {
-        val paint = android.graphics.Paint().apply {
-            isAntiAlias = true
+        val paint = android.graphics.Paint().apply { isAntiAlias = true }
+        
+        // Parse variant
+        val upper = templateName.uppercase()
+        val (baseName, variant) = when {
+            upper.endsWith("_OFFWHITE") -> Pair(upper.removeSuffix("_OFFWHITE"), "OFFWHITE")
+            upper.endsWith("_DARK") -> Pair(upper.removeSuffix("_DARK"), "DARK")
+            else -> Pair(upper, "REGULAR")
         }
         
-        // White background
-        paint.color = android.graphics.Color.WHITE
+        // Variant-aware colors
+        val bgColor = when (variant) {
+            "OFFWHITE" -> android.graphics.Color.rgb(253, 248, 240)
+            "DARK" -> android.graphics.Color.rgb(26, 26, 30)
+            else -> android.graphics.Color.WHITE
+        }
+        val lineColor = when (variant) {
+            "OFFWHITE" -> android.graphics.Color.rgb(200, 187, 168)
+            "DARK" -> android.graphics.Color.rgb(58, 58, 66)
+            else -> android.graphics.Color.rgb(200, 200, 200)
+        }
+        val accentColor = when (variant) {
+            "OFFWHITE" -> android.graphics.Color.rgb(153, 139, 118)
+            "DARK" -> android.graphics.Color.rgb(80, 80, 88)
+            else -> android.graphics.Color.rgb(180, 180, 180)
+        }
+        val strongColor = when (variant) {
+            "OFFWHITE" -> android.graphics.Color.rgb(107, 94, 77)
+            "DARK" -> android.graphics.Color.rgb(106, 106, 114)
+            else -> android.graphics.Color.rgb(150, 150, 150)
+        }
+        
+        // Background
+        paint.color = bgColor
         paint.style = android.graphics.Paint.Style.FILL
         canvas.drawRect(0f, 0f, width, height, paint)
         
-        when (templateName.uppercase()) {
+        when (baseName) {
             "LINED" -> {
-                paint.color = android.graphics.Color.rgb(200, 200, 200)
-                paint.strokeWidth = 0.5f
-                val lineSpacing = 24f
-                val marginLeft = 72f
-                val marginTop = 72f
+                paint.color = lineColor; paint.strokeWidth = 0.5f
+                val lineSpacing = 24f; val marginLeft = 72f; val marginTop = 72f
                 var y = marginTop
-                while (y < height - 36f) {
-                    canvas.drawLine(marginLeft, y, width - 36f, y, paint)
-                    y += lineSpacing
-                }
+                while (y < height - 36f) { canvas.drawLine(marginLeft, y, width - 36f, y, paint); y += lineSpacing }
             }
             "GRID" -> {
-                paint.color = android.graphics.Color.rgb(210, 210, 210)
-                paint.strokeWidth = 0.3f
-                val gridSize = 18f
-                val margin = 36f
-                var x = margin
-                while (x < width - margin) {
-                    canvas.drawLine(x, margin, x, height - margin, paint)
-                    x += gridSize
-                }
-                var y = margin
-                while (y < height - margin) {
-                    canvas.drawLine(margin, y, width - margin, y, paint)
-                    y += gridSize
-                }
+                paint.color = lineColor; paint.strokeWidth = 0.3f
+                val gridSize = 18f; val margin = 36f
+                var x = margin; while (x < width - margin) { canvas.drawLine(x, margin, x, height - margin, paint); x += gridSize }
+                var y = margin; while (y < height - margin) { canvas.drawLine(margin, y, width - margin, y, paint); y += gridSize }
             }
             "DOTTED" -> {
-                paint.color = android.graphics.Color.rgb(180, 180, 180)
-                paint.style = android.graphics.Paint.Style.FILL
-                val dotSpacing = 18f
-                val margin = 36f
+                paint.color = accentColor; paint.style = android.graphics.Paint.Style.FILL
+                val dotSpacing = 18f; val margin = 36f
                 var x = margin
                 while (x < width - margin) {
-                    var y = margin
-                    while (y < height - margin) {
-                        canvas.drawCircle(x, y, 1.5f, paint)
-                        y += dotSpacing
-                    }
+                    var y = margin; while (y < height - margin) { canvas.drawCircle(x, y, 1.5f, paint); y += dotSpacing }
                     x += dotSpacing
                 }
             }
             "CORNELL" -> {
-                paint.color = android.graphics.Color.rgb(190, 190, 190)
-                paint.strokeWidth = 1f
-                val leftMargin = width * 0.25f
-                val bottomMargin = height * 0.15f
+                paint.color = strongColor; paint.strokeWidth = 1f
+                val leftMargin = width * 0.25f; val bottomMargin = height * 0.15f
                 canvas.drawLine(leftMargin, 0f, leftMargin, height - bottomMargin, paint)
                 canvas.drawLine(0f, height - bottomMargin, width, height - bottomMargin, paint)
             }
-            // Default is blank - already filled with white
+            "ISOMETRIC" -> {
+                paint.color = accentColor; paint.style = android.graphics.Paint.Style.FILL
+                val spacing = 17f; val rowHeight = spacing * 0.866f; val margin = 30f
+                var row = 0; var y = margin
+                while (y < height - margin) {
+                    val xOff = if (row % 2 == 0) 0f else spacing / 2f
+                    var x = margin + xOff; while (x < width - margin) { canvas.drawCircle(x, y, 0.55f, paint); x += spacing }
+                    y += rowHeight; row++
+                }
+            }
+            "MUSIC" -> {
+                paint.color = strongColor; paint.strokeWidth = 0.4f; paint.style = android.graphics.Paint.Style.STROKE
+                val staffSpacing = 7f; val staffH = staffSpacing * 4; val gap = 55f; val margin = 55f
+                var staffTop = height - margin
+                while (staffTop - staffH > margin) {
+                    for (i in 0 until 5) canvas.drawLine(margin + 30f, staffTop - i * staffSpacing, width - margin, staffTop - i * staffSpacing, paint)
+                    staffTop -= (staffH + gap)
+                }
+            }
+            "ENGINEERING" -> {
+                paint.color = lineColor; paint.strokeWidth = 0.2f; paint.style = android.graphics.Paint.Style.STROKE
+                val gridSize = 14.17f; val margin = 28f
+                var x = margin; while (x <= width - margin) { canvas.drawLine(x, margin, x, height - margin, paint); x += gridSize }
+                var y = margin; while (y <= height - margin) { canvas.drawLine(margin, y, width - margin, y, paint); y += gridSize }
+            }
+            "TODO" -> {
+                paint.color = accentColor; paint.strokeWidth = 0.5f; paint.style = android.graphics.Paint.Style.STROKE
+                val margin = 40f; val lineSpacing = 28f
+                var y = height - 90f
+                while (y > margin) {
+                    canvas.drawRect(margin + 5f, y - 10f, margin + 15f, y, paint)
+                    paint.color = lineColor; canvas.drawLine(55f, y, width - margin, y, paint); paint.color = accentColor
+                    y -= lineSpacing
+                }
+            }
+            "PLANNER" -> {
+                paint.color = accentColor; paint.strokeWidth = 0.5f
+                val margin = 35f; val timeColWidth = 60f
+                canvas.drawLine(margin + timeColWidth, margin, margin + timeColWidth, height - 70f, paint)
+                paint.color = lineColor; paint.strokeWidth = 0.3f
+                var y = height - 70f
+                while (y > margin) { canvas.drawLine(margin, y, width - margin, y, paint); y -= 48f }
+            }
+            "STORYBOARD" -> {
+                paint.color = accentColor; paint.strokeWidth = 0.8f; paint.style = android.graphics.Paint.Style.STROKE
+                val margin = 30f; val cols = 2; val rows = 3; val gap = 20f; val captionH = 30f
+                val cellW = (width - 2 * margin - (cols - 1) * gap) / cols
+                val cellH = (height - 2 * margin - rows * captionH - (rows - 1) * gap) / rows
+                for (r in 0 until rows) for (c in 0 until cols) {
+                    val x = margin + c * (cellW + gap)
+                    val y = height - margin - (r + 1) * (cellH + captionH + gap) + gap
+                    canvas.drawRect(x, y, x + cellW, y + cellH, paint)
+                }
+            }
+            "CALLIGRAPHY" -> {
+                val margin = 40f; val setHeight = 48f; val gap = 18f
+                var y = height - margin
+                while (y - setHeight > margin) {
+                    val baseline = y - setHeight * 0.3f
+                    paint.color = accentColor; paint.strokeWidth = 0.6f; paint.style = android.graphics.Paint.Style.STROKE
+                    canvas.drawLine(margin, baseline, width - margin, baseline, paint)
+                    paint.color = lineColor; paint.strokeWidth = 0.2f
+                    canvas.drawLine(margin, y - setHeight, width - margin, y - setHeight, paint)
+                    canvas.drawLine(margin, y, width - margin, y, paint)
+                    y -= (setHeight + gap)
+                }
+            }
+            "HEXAGONAL" -> {
+                paint.color = lineColor; paint.strokeWidth = 0.4f; paint.style = android.graphics.Paint.Style.STROKE
+                val hexSize = 14f; val margin = 25f; val hexW = hexSize * 1.732f; val rowH = hexSize * 1.5f
+                var row = 0; var y = margin
+                while (y < height - margin) {
+                    val xOff = if (row % 2 == 1) hexW / 2f else 0f
+                    var x = margin + xOff
+                    while (x + hexW < width - margin) {
+                        val cx = x + hexW / 2f; val cy = y + hexSize
+                        val path = android.graphics.Path()
+                        for (i in 0 until 6) {
+                            val angle = Math.toRadians((60.0 * i - 30.0))
+                            val px = cx + hexSize * kotlin.math.cos(angle).toFloat()
+                            val py = cy + hexSize * kotlin.math.sin(angle).toFloat()
+                            if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                        }
+                        path.close(); canvas.drawPath(path, paint)
+                        x += hexW
+                    }
+                    y += rowH; row++
+                }
+            }
+            "FOUR_QUADRANT" -> {
+                val margin = 40f; val centerX = width / 2f; val centerY = height / 2f
+                paint.color = strongColor; paint.strokeWidth = 1.2f; paint.style = android.graphics.Paint.Style.STROKE
+                canvas.drawLine(centerX, margin, centerX, height - margin, paint)
+                canvas.drawLine(margin, centerY, width - margin, centerY, paint)
+                paint.color = accentColor; paint.strokeWidth = 0.8f
+                canvas.drawRect(margin, margin, width - margin, height - margin, paint)
+            }
+            // BLANK and unknown are already filled with background
         }
     }
     
@@ -708,19 +810,32 @@ class MuPdfRenderer @Inject constructor(
     
     /**
      * Creates a PDF with the specified template.
-     * @param template One of: BLANK, LINED, GRID, DOTTED, CORNELL, ISOMETRIC, MUSIC, ENGINEERING
+     * Supports variant suffixes: LINED, LINED_OFFWHITE, LINED_DARK
      */
     suspend fun createTemplatePdf(uri: Uri, width: Float, height: Float, template: String) = withContext(Dispatchers.IO) {
         try {
-            val pdfBytes = when (template.uppercase()) {
-                "LINED" -> createLinedPdfBytes(width, height)
-                "GRID" -> createGridPdfBytes(width, height)
-                "DOTTED" -> createDottedPdfBytes(width, height)
-                "CORNELL" -> createCornellPdfBytes(width, height)
-                "ISOMETRIC" -> createIsometricPdfBytes(width, height)
-                "MUSIC" -> createMusicPdfBytes(width, height)
-                "ENGINEERING" -> createEngineeringPdfBytes(width, height)
-                else -> createBlankPdfBytes(width, height)
+            val upper = template.uppercase()
+            val (baseName, variant) = when {
+                upper.endsWith("_OFFWHITE") -> Pair(upper.removeSuffix("_OFFWHITE"), "OFFWHITE")
+                upper.endsWith("_DARK") -> Pair(upper.removeSuffix("_DARK"), "DARK")
+                else -> Pair(upper, "REGULAR")
+            }
+            
+            val pdfBytes = when (baseName) {
+                "LINED" -> createLinedPdfBytes(width, height, variant)
+                "GRID" -> createGridPdfBytes(width, height, variant)
+                "DOTTED" -> createDottedPdfBytes(width, height, variant)
+                "CORNELL" -> createCornellPdfBytes(width, height, variant)
+                "ISOMETRIC" -> createIsometricPdfBytes(width, height, variant)
+                "MUSIC" -> createMusicPdfBytes(width, height, variant)
+                "ENGINEERING" -> createEngineeringPdfBytes(width, height, variant)
+                "TODO" -> createTodoPdfBytes(width, height, variant)
+                "PLANNER" -> createPlannerPdfBytes(width, height, variant)
+                "STORYBOARD" -> createStoryboardPdfBytes(width, height, variant)
+                "CALLIGRAPHY" -> createCalligraphyPdfBytes(width, height, variant)
+                "HEXAGONAL" -> createHexagonalPdfBytes(width, height, variant)
+                "FOUR_QUADRANT" -> createFourQuadrantPdfBytes(width, height, variant)
+                else -> createBlankPdfBytes(width, height, variant)
             }
             
             context.contentResolver.openOutputStream(uri)?.use { output ->
@@ -1097,131 +1212,135 @@ class MuPdfRenderer @Inject constructor(
     }
     
     /**
-     * Creates blank PDF bytes for a single page.
+     * PDF color palette for content stream generation.
+     * All values are 0.0-1.0 RGB floats for PDF operators (rg/RG).
      */
-    private fun createBlankPdfBytes(width: Float, height: Float): ByteArray {
-        return createPdfWithContent(width, height, "")
+    private data class PdfPalette(
+        val bgR: Float, val bgG: Float, val bgB: Float,
+        val lineR: Float, val lineG: Float, val lineB: Float,
+        val accentR: Float, val accentG: Float, val accentB: Float,
+        val strongR: Float, val strongG: Float, val strongB: Float,
+        val redR: Float, val redG: Float, val redB: Float,
+        val fillR: Float, val fillG: Float, val fillB: Float,
+        val fillBR: Float, val fillBG: Float, val fillBB: Float,
+        val creamR: Float, val creamG: Float, val creamB: Float,
+        val greenBgR: Float, val greenBgG: Float, val greenBgB: Float,
+        val greenLineR: Float, val greenLineG: Float, val greenLineB: Float,
+        val greenAccR: Float, val greenAccG: Float, val greenAccB: Float,
+        val greenBrdR: Float, val greenBrdG: Float, val greenBrdB: Float
+    ) {
+        fun bg() = "$bgR $bgG $bgB"
+        fun line() = "$lineR $lineG $lineB"
+        fun accent() = "$accentR $accentG $accentB"
+        fun strong() = "$strongR $strongG $strongB"
+        fun red() = "$redR $redG $redB"
+        fun fill() = "$fillR $fillG $fillB"
+        fun fillB() = "$fillBR $fillBG $fillBB"
+        fun cream() = "$creamR $creamG $creamB"
+        fun greenBg() = "$greenBgR $greenBgG $greenBgB"
+        fun greenLine() = "$greenLineR $greenLineG $greenLineB"
+        fun greenAcc() = "$greenAccR $greenAccG $greenAccB"
+        fun greenBrd() = "$greenBrdR $greenBrdG $greenBrdB"
     }
     
-    /**
-     * Creates lined paper (college ruled) - Professional design.
-     * Features: Red margin line, blue horizontal lines, header area.
-     */
-    private fun createLinedPdfBytes(width: Float, height: Float): ByteArray {
-        val lineSpacing = 24f // ~8mm for college ruled
-        val marginLeft = 72f  // 1 inch margin for binding
-        val marginTop = 85f   // Header area
-        val marginRight = width - 40f
-        val marginBottom = 50f
-        
+    private fun getPdfPalette(variant: String): PdfPalette = when (variant) {
+        "OFFWHITE" -> PdfPalette(
+            0.992f, 0.973f, 0.941f,  // bg
+            0.784f, 0.733f, 0.659f,  // line
+            0.6f, 0.545f, 0.463f,    // accent
+            0.42f, 0.369f, 0.302f,   // strong
+            0.722f, 0.361f, 0.227f,  // red
+            0.941f, 0.91f, 0.847f,   // fill
+            0.91f, 0.863f, 0.784f,   // fillB
+            0.973f, 0.949f, 0.902f,  // cream
+            0.961f, 0.941f, 0.894f,  // greenBg
+            0.745f, 0.698f, 0.608f,  // greenLine
+            0.608f, 0.561f, 0.471f,  // greenAcc
+            0.51f, 0.463f, 0.373f    // greenBrd
+        )
+        "DARK" -> PdfPalette(
+            0.102f, 0.102f, 0.118f,  // bg
+            0.227f, 0.227f, 0.259f,  // line
+            0.314f, 0.314f, 0.345f,  // accent
+            0.416f, 0.416f, 0.447f,  // strong
+            0.545f, 0.227f, 0.227f,  // red
+            0.145f, 0.145f, 0.157f,  // fill
+            0.125f, 0.125f, 0.141f,  // fillB
+            0.118f, 0.118f, 0.133f,  // cream
+            0.102f, 0.118f, 0.102f,  // greenBg
+            0.196f, 0.255f, 0.196f,  // greenLine
+            0.255f, 0.333f, 0.255f,  // greenAcc
+            0.176f, 0.275f, 0.176f   // greenBrd
+        )
+        else -> PdfPalette(          // REGULAR
+            1f, 1f, 1f,              // bg
+            0.824f, 0.824f, 0.824f,  // line
+            0.65f, 0.65f, 0.65f,     // accent
+            0.3f, 0.3f, 0.35f,       // strong
+            0.8f, 0.2f, 0.2f,        // red
+            0.95f, 0.95f, 0.97f,     // fill
+            0.92f, 0.95f, 0.98f,     // fillB
+            0.996f, 0.988f, 0.969f,  // cream
+            0.94f, 0.98f, 0.94f,     // greenBg
+            0.7f, 0.85f, 0.7f,       // greenLine
+            0.45f, 0.7f, 0.45f,      // greenAcc
+            0.3f, 0.55f, 0.3f        // greenBrd
+        )
+    }
+    
+    private fun createBlankPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val content = if (variant != "REGULAR") {
+            "q\n${p.bg()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n"
+        } else ""
+        return createPdfWithContent(width, height, content)
+    }
+    
+    private fun createLinedPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val lineSpacing = 24f; val marginLeft = 72f; val marginTop = 85f
+        val marginRight = width - 40f; val marginBottom = 50f
         val content = StringBuilder()
-        
-        // Light cream background tint for paper feel
-        content.append("q\n")
-        content.append("0.996 0.988 0.969 rg\n") // Warm cream
-        content.append("0 0 ${width.toInt()} ${height.toInt()} re f\n")
-        content.append("Q\n")
-        
-        // Red vertical margin line (classic legal pad style)
-        content.append("0.8 0.2 0.2 RG\n") // Red color
-        content.append("0.75 w\n")
+        content.append("q\n${p.cream()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        content.append("${p.red()} RG\n0.75 w\n")
         content.append("${marginLeft - 8f} ${height - marginTop} m ${marginLeft - 8f} $marginBottom l S\n")
-        
-        // Header line (thicker)
-        content.append("0.6 0.75 0.85 RG\n") // Light blue
-        content.append("1.5 w\n")
+        val blueR = if (variant == "REGULAR") "0.6 0.75 0.85" else p.line()
+        content.append("$blueR RG\n1.5 w\n")
         content.append("40 ${height - marginTop + 5f} m ${width - 40f} ${height - marginTop + 5f} l S\n")
-        
-        // Horizontal ruled lines (blue)
-        content.append("0.7 0.82 0.9 RG\n") // Light blue
-        content.append("0.5 w\n")
-        
+        val lineClr = if (variant == "REGULAR") "0.7 0.82 0.9" else p.line()
+        content.append("$lineClr RG\n0.5 w\n")
         var y = height - marginTop - lineSpacing
-        while (y > marginBottom) {
-            content.append("$marginLeft $y m $marginRight $y l S\n")
-            y -= lineSpacing
-        }
-        
+        while (y > marginBottom) { content.append("$marginLeft $y m $marginRight $y l S\n"); y -= lineSpacing }
         return createPdfWithContent(width, height, content.toString())
     }
     
-    /**
-     * Creates grid paper - Professional engineering/math style.
-     * Features: 5mm grid with major gridlines every 5 squares.
-     */
-    private fun createGridPdfBytes(width: Float, height: Float): ByteArray {
-        val smallGrid = 14.17f // 5mm in points
-        val largeGrid = smallGrid * 5 // Major divisions every 5 squares
-        val margin = 35f
-        
+    private fun createGridPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val smallGrid = 14.17f; val largeGrid = smallGrid * 5; val margin = 35f
         val content = StringBuilder()
-        
-        // Minor grid (light gray)
-        content.append("0.88 0.88 0.88 RG\n")
-        content.append("0.25 w\n")
-        
-        // Vertical minor lines
-        var x = margin
-        while (x <= width - margin) {
-            content.append("$x $margin m $x ${height - margin} l S\n")
-            x += smallGrid
-        }
-        
-        // Horizontal minor lines  
-        var y = margin
-        while (y <= height - margin) {
-            content.append("$margin $y m ${width - margin} $y l S\n")
-            y += smallGrid
-        }
-        
-        // Major grid (darker gray)
-        content.append("0.65 0.65 0.65 RG\n")
-        content.append("0.5 w\n")
-        
-        // Vertical major lines
-        x = margin
-        while (x <= width - margin) {
-            content.append("$x $margin m $x ${height - margin} l S\n")
-            x += largeGrid
-        }
-        
-        // Horizontal major lines
-        y = margin
-        while (y <= height - margin) {
-            content.append("$margin $y m ${width - margin} $y l S\n")
-            y += largeGrid
-        }
-        
-        // Border
-        content.append("0.5 0.5 0.5 RG\n")
-        content.append("0.75 w\n")
+        if (variant != "REGULAR") content.append("q\n${p.bg()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        content.append("${p.line()} RG\n0.25 w\n")
+        var x = margin; while (x <= width - margin) { content.append("$x $margin m $x ${height - margin} l S\n"); x += smallGrid }
+        var y = margin; while (y <= height - margin) { content.append("$margin $y m ${width - margin} $y l S\n"); y += smallGrid }
+        content.append("${p.accent()} RG\n0.5 w\n")
+        x = margin; while (x <= width - margin) { content.append("$x $margin m $x ${height - margin} l S\n"); x += largeGrid }
+        y = margin; while (y <= height - margin) { content.append("$margin $y m ${width - margin} $y l S\n"); y += largeGrid }
+        content.append("${p.accent()} RG\n0.75 w\n")
         content.append("$margin $margin m ${width - margin} $margin l ${width - margin} ${height - margin} l $margin ${height - margin} l s\n")
-        
         return createPdfWithContent(width, height, content.toString())
     }
     
-    /**
-     * Creates dotted paper - Clean bullet journal style.
-     * Features: Evenly spaced dots using proper PDF circle drawing.
-     */
-    private fun createDottedPdfBytes(width: Float, height: Float): ByteArray {
-        val dotSpacing = 14.17f // 5mm spacing
-        val margin = 35f
-        val dotRadius = 0.6f
-        
+    private fun createDottedPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val dotSpacing = 14.17f; val margin = 35f; val dotRadius = 0.6f
         val content = StringBuilder()
-        
-        // Dots using small filled circles (Bezier approximation)
-        content.append("0.55 0.55 0.55 rg\n") // Medium gray fill
-        
-        // PDF circle approximation constant
+        if (variant != "REGULAR") content.append("q\n${p.bg()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        content.append("${p.accent()} rg\n")
         val k = 0.5522847498f * dotRadius
-        
         var x = margin + dotSpacing
         while (x < width - margin) {
             var y = margin + dotSpacing
             while (y < height - margin) {
-                // Draw circle using cubic Bezier curves (4 curves for full circle)
                 content.append("${x + dotRadius} $y m ")
                 content.append("${x + dotRadius} ${y + k} ${x + k} ${y + dotRadius} $x ${y + dotRadius} c ")
                 content.append("${x - k} ${y + dotRadius} ${x - dotRadius} ${y + k} ${x - dotRadius} $y c ")
@@ -1232,228 +1351,247 @@ class MuPdfRenderer @Inject constructor(
             }
             x += dotSpacing
         }
-        
         return createPdfWithContent(width, height, content.toString())
     }
     
-    /**
-     * Creates Cornell notes layout - Professional study template.
-     * Features: Cue column, notes area with lines, summary section with labels.
-     */
-    private fun createCornellPdfBytes(width: Float, height: Float): ByteArray {
-        val cueColumnWidth = 150f // Fixed width for cue column
-        val summaryHeight = 130f // Fixed height for summary
-        val topMargin = 70f
-        val sideMargin = 25f
-        
+    private fun createCornellPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val cueColumnWidth = 150f; val summaryHeight = 130f; val topMargin = 70f; val sideMargin = 25f
         val content = StringBuilder()
-        
-        // Background - light cream
-        content.append("q\n")
-        content.append("0.99 0.98 0.96 rg\n")
-        content.append("0 0 ${width.toInt()} ${height.toInt()} re f\n")
-        content.append("Q\n")
-        
-        // Summary section background (light blue)
-        content.append("q\n")
-        content.append("0.92 0.95 0.98 rg\n")
-        content.append("$sideMargin $sideMargin ${width - sideMargin * 2} $summaryHeight re f\n")
-        content.append("Q\n")
-        
-        // Cue column background (light warm tone)
-        content.append("q\n")
-        content.append("0.98 0.96 0.92 rg\n")
-        content.append("$sideMargin ${summaryHeight + sideMargin} $cueColumnWidth ${height - summaryHeight - topMargin - sideMargin} re f\n")
-        content.append("Q\n")
-        
-        // Header area background
-        content.append("q\n")
-        content.append("0.95 0.95 0.97 rg\n")
-        content.append("$sideMargin ${height - topMargin} ${width - sideMargin * 2} ${topMargin - sideMargin} re f\n")
-        content.append("Q\n")
-        
-        // Main section dividers (dark lines)
-        content.append("0.3 0.3 0.35 RG\n")
-        content.append("1.5 w\n")
-        
-        // Outer border
-        content.append("$sideMargin $sideMargin m ${width - sideMargin} $sideMargin l ")
-        content.append("${width - sideMargin} ${height - sideMargin} l $sideMargin ${height - sideMargin} l s\n")
-        
-        // Vertical divider (cue column)
+        content.append("q\n${p.cream()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        content.append("q\n${p.fillB()} rg\n$sideMargin $sideMargin ${width - sideMargin * 2} $summaryHeight re f\nQ\n")
+        val cueClr = if (variant == "REGULAR") "0.98 0.96 0.92" else p.fill()
+        content.append("q\n$cueClr rg\n$sideMargin ${summaryHeight + sideMargin} $cueColumnWidth ${height - summaryHeight - topMargin - sideMargin} re f\nQ\n")
+        content.append("q\n${p.fill()} rg\n$sideMargin ${height - topMargin} ${width - sideMargin * 2} ${topMargin - sideMargin} re f\nQ\n")
+        content.append("${p.strong()} RG\n1.5 w\n")
+        content.append("$sideMargin $sideMargin m ${width - sideMargin} $sideMargin l ${width - sideMargin} ${height - sideMargin} l $sideMargin ${height - sideMargin} l s\n")
         val cueRight = sideMargin + cueColumnWidth
         content.append("$cueRight ${summaryHeight + sideMargin} m $cueRight ${height - topMargin} l S\n")
-        
-        // Horizontal divider (summary area)
         content.append("$sideMargin ${summaryHeight + sideMargin} m ${width - sideMargin} ${summaryHeight + sideMargin} l S\n")
-        
-        // Header divider
         content.append("$sideMargin ${height - topMargin} m ${width - sideMargin} ${height - topMargin} l S\n")
-        
-        // Faint ruled lines in notes area
-        content.append("0.75 0.78 0.82 RG\n")
-        content.append("0.4 w\n")
-        val lineSpacing = 24f
-        var y = height - topMargin - lineSpacing
+        content.append("${p.line()} RG\n0.4 w\n")
+        val lineSpacing = 24f; var y = height - topMargin - lineSpacing
         while (y > summaryHeight + sideMargin + 15f) {
-            content.append("${cueRight + 10f} $y m ${width - sideMargin - 10f} $y l S\n")
-            y -= lineSpacing
+            content.append("${cueRight + 10f} $y m ${width - sideMargin - 10f} $y l S\n"); y -= lineSpacing
         }
-        
-        // Lines in cue column (fainter)
-        content.append("0.82 0.8 0.75 RG\n")
-        content.append("0.3 w\n")
         y = height - topMargin - lineSpacing
         while (y > summaryHeight + sideMargin + 15f) {
-            content.append("${sideMargin + 10f} $y m ${cueRight - 10f} $y l S\n")
-            y -= lineSpacing
+            content.append("${sideMargin + 10f} $y m ${cueRight - 10f} $y l S\n"); y -= lineSpacing
         }
-        
-        // Lines in summary section
-        content.append("0.75 0.8 0.85 RG\n")
-        content.append("0.3 w\n")
+        content.append("${p.line()} RG\n0.3 w\n")
         y = summaryHeight - 10f
         while (y > sideMargin + 20f) {
-            content.append("${sideMargin + 10f} $y m ${width - sideMargin - 10f} $y l S\n")
-            y -= lineSpacing
+            content.append("${sideMargin + 10f} $y m ${width - sideMargin - 10f} $y l S\n"); y -= lineSpacing
         }
-        
         return createPdfWithContent(width, height, content.toString())
     }
     
-    /**
-     * Creates isometric dot grid - For 3D sketching and technical drawing.
-     * Features: Triangular dot pattern for isometric perspective.
-     */
-    private fun createIsometricPdfBytes(width: Float, height: Float): ByteArray {
-        val spacing = 17f // Horizontal spacing between dots
-        val rowHeight = spacing * 0.866f // sqrt(3)/2 for 60° angles
-        val margin = 30f
-        val dotRadius = 0.55f
-        
+    private fun createIsometricPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val spacing = 17f; val rowHeight = spacing * 0.866f; val margin = 30f; val dotRadius = 0.55f
         val content = StringBuilder()
-        content.append("0.5 0.5 0.55 rg\n") // Slightly blue-gray dots
-        
+        if (variant != "REGULAR") content.append("q\n${p.bg()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        content.append("${p.accent()} rg\n")
         val k = 0.5522847498f * dotRadius
-        
-        var row = 0
-        var y = margin
+        var row = 0; var y = margin
         while (y < height - margin) {
             val xOffset = if (row % 2 == 0) 0f else spacing / 2f
             var x = margin + xOffset
             while (x < width - margin) {
-                // Draw dot using Bezier circle
                 content.append("${x + dotRadius} $y m ")
                 content.append("${x + dotRadius} ${y + k} ${x + k} ${y + dotRadius} $x ${y + dotRadius} c ")
                 content.append("${x - k} ${y + dotRadius} ${x - dotRadius} ${y + k} ${x - dotRadius} $y c ")
                 content.append("${x - dotRadius} ${y - k} ${x - k} ${y - dotRadius} $x ${y - dotRadius} c ")
-                content.append("${x + k} ${y - dotRadius} ${x + dotRadius} ${y - k} ${x + dotRadius} $y c ")
-                content.append("f\n")
+                content.append("${x + k} ${y - dotRadius} ${x + dotRadius} ${y - k} ${x + dotRadius} $y c f\n")
                 x += spacing
             }
-            y += rowHeight
-            row++
+            y += rowHeight; row++
         }
-        
         return createPdfWithContent(width, height, content.toString())
     }
     
-    /**
-     * Creates music staff paper - Professional manuscript paper.
-     * Features: Properly spaced 5-line staves with clef area.
-     */
-    private fun createMusicPdfBytes(width: Float, height: Float): ByteArray {
-        val staffLineSpacing = 7f // Standard music staff line spacing
-        val staffHeight = staffLineSpacing * 4 // 5 lines = 4 spaces
-        val staffGap = 55f // Space between staves (for notes above/below)
-        val margin = 55f
-        val clefMargin = 30f // Extra space at left for clef
-        
+    private fun createMusicPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val staffLineSpacing = 7f; val staffHeight = staffLineSpacing * 4
+        val staffGap = 55f; val margin = 55f; val clefMargin = 30f
         val content = StringBuilder()
-        
-        // Cream paper background
-        content.append("q\n")
-        content.append("0.995 0.992 0.975 rg\n")
-        content.append("0 0 ${width.toInt()} ${height.toInt()} re f\n")
-        content.append("Q\n")
-        
-        // Staff lines (black for music paper)
-        content.append("0.15 0.15 0.15 RG\n")
-        content.append("0.4 w\n")
-        
+        content.append("q\n${p.cream()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        content.append("${p.strong()} RG\n0.4 w\n")
         var staffTop = height - margin
         while (staffTop - staffHeight > margin) {
-            // Draw 5 lines for one staff
             for (i in 0 until 5) {
                 val lineY = staffTop - (i * staffLineSpacing)
                 content.append("${margin + clefMargin} $lineY m ${width - margin} $lineY l S\n")
             }
-            
-            // Bar lines at start and end
             content.append("0.8 w\n")
-            content.append("${margin + clefMargin} ${staffTop} m ${margin + clefMargin} ${staffTop - staffHeight} l S\n")
-            content.append("${width - margin} ${staffTop} m ${width - margin} ${staffTop - staffHeight} l S\n")
+            content.append("${margin + clefMargin} $staffTop m ${margin + clefMargin} ${staffTop - staffHeight} l S\n")
+            content.append("${width - margin} $staffTop m ${width - margin} ${staffTop - staffHeight} l S\n")
             content.append("0.4 w\n")
-            
             staffTop -= (staffHeight + staffGap)
         }
-        
         return createPdfWithContent(width, height, content.toString())
     }
     
-    /**
-     * Creates engineering paper - Traditional green grid with 5-to-1 divisions.
-     * Features: Light green background, fine grid with bold major lines.
-     */
-    private fun createEngineeringPdfBytes(width: Float, height: Float): ByteArray {
-        val smallGrid = 2.835f // 1mm in points
-        val mediumGrid = smallGrid * 5 // 5mm
-        val largeGrid = smallGrid * 10 // 10mm (1cm)
-        val margin = 28f
-        
+    private fun createEngineeringPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val smallGrid = 2.835f; val mediumGrid = smallGrid * 5; val largeGrid = smallGrid * 10; val margin = 28f
         val content = StringBuilder()
-        
-        // Very light green background
-        content.append("q\n")
-        content.append("0.94 0.98 0.94 rg\n")
-        content.append("0 0 ${width.toInt()} ${height.toInt()} re f\n")
-        content.append("Q\n")
-        
-        // Medium grid lines (5mm - subtle)
-        content.append("0.7 0.85 0.7 RG\n")
-        content.append("0.2 w\n")
-        
-        var x = margin
-        while (x <= width - margin) {
-            content.append("$x $margin m $x ${height - margin} l S\n")
-            x += mediumGrid
-        }
-        var y = margin
-        while (y <= height - margin) {
-            content.append("$margin $y m ${width - margin} $y l S\n")
-            y += mediumGrid
-        }
-        
-        // Major grid lines (10mm - more visible)
-        content.append("0.45 0.7 0.45 RG\n")
-        content.append("0.5 w\n")
-        
-        x = margin
-        while (x <= width - margin) {
-            content.append("$x $margin m $x ${height - margin} l S\n")
-            x += largeGrid
-        }
-        y = margin
-        while (y <= height - margin) {
-            content.append("$margin $y m ${width - margin} $y l S\n")
-            y += largeGrid
-        }
-        
-        // Border
-        content.append("0.3 0.55 0.3 RG\n")
-        content.append("0.8 w\n")
+        content.append("q\n${p.greenBg()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        content.append("${p.greenLine()} RG\n0.2 w\n")
+        var x = margin; while (x <= width - margin) { content.append("$x $margin m $x ${height - margin} l S\n"); x += mediumGrid }
+        var y = margin; while (y <= height - margin) { content.append("$margin $y m ${width - margin} $y l S\n"); y += mediumGrid }
+        content.append("${p.greenAcc()} RG\n0.5 w\n")
+        x = margin; while (x <= width - margin) { content.append("$x $margin m $x ${height - margin} l S\n"); x += largeGrid }
+        y = margin; while (y <= height - margin) { content.append("$margin $y m ${width - margin} $y l S\n"); y += largeGrid }
+        content.append("${p.greenBrd()} RG\n0.8 w\n")
         content.append("$margin $margin m ${width - margin} $margin l ${width - margin} ${height - margin} l $margin ${height - margin} l s\n")
-        
+        return createPdfWithContent(width, height, content.toString())
+    }
+    
+    // === NEW TEMPLATES ===
+    
+    private fun createTodoPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val margin = 40f; val lineSpacing = 28f; val checkboxSize = 10f; val checkboxMargin = 55f
+        val content = StringBuilder()
+        content.append("q\n${p.bg()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        // Title area
+        content.append("q\n${p.fill()} rg\n$margin ${height - 65f} ${width - 2 * margin} 25 re f\nQ\n")
+        content.append("${p.strong()} RG\n1 w\n$margin ${height - 65f} m ${width - margin} ${height - 65f} l S\n")
+        // Checkbox rows
+        var y = height - 90f
+        while (y > margin) {
+            content.append("${p.accent()} RG\n0.8 w\n")
+            content.append("${margin + 5f} ${y - checkboxSize} m ${margin + 5f + checkboxSize} ${y - checkboxSize} l ")
+            content.append("${margin + 5f + checkboxSize} $y l ${margin + 5f} $y l s\n")
+            content.append("${p.line()} RG\n0.3 w\n$checkboxMargin $y m ${width - margin} $y l S\n")
+            y -= lineSpacing
+        }
+        return createPdfWithContent(width, height, content.toString())
+    }
+    
+    private fun createPlannerPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val margin = 35f; val timeColWidth = 60f; val hourHeight = 48f
+        val content = StringBuilder()
+        content.append("q\n${p.bg()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        // Header
+        content.append("q\n${p.fill()} rg\n$margin ${height - 65f} ${width - 2 * margin} 30 re f\nQ\n")
+        content.append("${p.strong()} RG\n1 w\n$margin ${height - 65f} m ${width - margin} ${height - 65f} l S\n")
+        // Time column
+        content.append("${p.accent()} RG\n0.5 w\n${margin + timeColWidth} $margin m ${margin + timeColWidth} ${height - 70f} l S\n")
+        // Hour rows
+        content.append("${p.line()} RG\n0.3 w\n")
+        var y = height - 70f; var hour = 6
+        while (y > margin && hour <= 23) {
+            content.append("$margin $y m ${width - margin} $y l S\n")
+            // Half-hour line
+            val halfY = y - hourHeight / 2f
+            if (halfY > margin) {
+                content.append("${p.line()} RG\n0.15 w\n${margin + timeColWidth + 10f} $halfY m ${width - margin} $halfY l S\n0.3 w\n")
+            }
+            y -= hourHeight; hour++
+        }
+        return createPdfWithContent(width, height, content.toString())
+    }
+    
+    private fun createStoryboardPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val margin = 30f; val cols = 2; val rows = 3; val gap = 20f; val captionH = 30f
+        val cellW = (width - 2 * margin - (cols - 1) * gap) / cols
+        val cellH = (height - 2 * margin - rows * captionH - (rows - 1) * gap) / rows
+        val content = StringBuilder()
+        content.append("q\n${p.bg()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        for (r in 0 until rows) {
+            for (c in 0 until cols) {
+                val x = margin + c * (cellW + gap)
+                val y = margin + r * (cellH + captionH + gap)
+                content.append("${p.accent()} RG\n0.8 w\n$x $y m ${x + cellW} $y l ${x + cellW} ${y + cellH} l $x ${y + cellH} l s\n")
+                content.append("${p.line()} RG\n0.3 w\n")
+                val lineY1 = y - captionH * 0.4f
+                val lineY2 = y - captionH * 0.8f
+                if (lineY1 > margin - 5f) { content.append("$x $lineY1 m ${x + cellW} $lineY1 l S\n") }
+                if (lineY2 > margin - 5f) { content.append("$x $lineY2 m ${x + cellW} $lineY2 l S\n") }
+            }
+        }
+        return createPdfWithContent(width, height, content.toString())
+    }
+    
+    private fun createCalligraphyPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val margin = 40f; val setHeight = 48f; val gap = 18f
+        val content = StringBuilder()
+        content.append("q\n${p.cream()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        var y = margin + setHeight
+        while (y < height - margin) {
+            val baseline = y - setHeight * 0.3f
+            val xHeight = baseline + setHeight * 0.4f
+            val ascender = y
+            val descender = y - setHeight
+            // Baseline (strong)
+            content.append("${p.accent()} RG\n0.6 w\n$margin $baseline m ${width - margin} $baseline l S\n")
+            // X-height
+            content.append("${p.line()} RG\n0.4 w\n$margin $xHeight m ${width - margin} $xHeight l S\n")
+            // Ascender & descender (light)
+            content.append("${p.line()} RG\n0.2 w\n$margin $ascender m ${width - margin} $ascender l S\n")
+            content.append("$margin $descender m ${width - margin} $descender l S\n")
+            y += setHeight + gap
+        }
+        return createPdfWithContent(width, height, content.toString())
+    }
+    
+    private fun createHexagonalPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val hexSize = 14f; val margin = 25f
+        val hexW = hexSize * 1.732f; val rowH = hexSize * 1.5f
+        val content = StringBuilder()
+        content.append("q\n${p.bg()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        content.append("${p.line()} RG\n0.4 w\n")
+        var row = 0; var y = margin
+        while (y < height - margin) {
+            val xOff = if (row % 2 == 1) hexW / 2f else 0f
+            var x = margin + xOff
+            while (x + hexW < width - margin) {
+                val cx = x + hexW / 2f; val cy = y + hexSize
+                // Draw hexagon using lines
+                var firstX = 0f; var firstY = 0f
+                for (i in 0 until 6) {
+                    val angle = Math.toRadians((60.0 * i - 30.0))
+                    val px = cx + hexSize * kotlin.math.cos(angle).toFloat()
+                    val py = cy + hexSize * kotlin.math.sin(angle).toFloat()
+                    if (i == 0) { content.append("$px $py m "); firstX = px; firstY = py }
+                    else content.append("$px $py l ")
+                }
+                content.append("$firstX $firstY l S\n")
+                x += hexW
+            }
+            y += rowH; row++
+        }
+        return createPdfWithContent(width, height, content.toString())
+    }
+    
+    private fun createFourQuadrantPdfBytes(width: Float, height: Float, variant: String = "REGULAR"): ByteArray {
+        val p = getPdfPalette(variant)
+        val margin = 40f; val headerH = 35f
+        val centerX = width / 2f; val centerY = (height - headerH) / 2f
+        val content = StringBuilder()
+        content.append("q\n${p.bg()} rg\n0 0 ${width.toInt()} ${height.toInt()} re f\nQ\n")
+        // Header
+        content.append("q\n${p.fill()} rg\n$margin ${height - margin - headerH} ${width - 2 * margin} $headerH re f\nQ\n")
+        // Cross lines
+        content.append("${p.strong()} RG\n1.2 w\n")
+        content.append("$centerX $margin m $centerX ${height - margin - headerH} l S\n")
+        content.append("$margin $centerY m ${width - margin} $centerY l S\n")
+        // Border
+        content.append("${p.accent()} RG\n0.8 w\n")
+        content.append("$margin $margin m ${width - margin} $margin l ${width - margin} ${height - margin - headerH} l $margin ${height - margin - headerH} l s\n")
+        // Faint ruled lines
+        content.append("${p.line()} RG\n0.2 w\n")
+        val lineSpacing = 24f
+        var y = centerY - lineSpacing
+        while (y > margin + 5f) { content.append("${margin + 5f} $y m ${width - margin - 5f} $y l S\n"); y -= lineSpacing }
+        y = centerY + lineSpacing
+        while (y < height - margin - headerH - 5f) { content.append("${margin + 5f} $y m ${width - margin - 5f} $y l S\n"); y += lineSpacing }
         return createPdfWithContent(width, height, content.toString())
     }
     

@@ -718,8 +718,88 @@ class PdfAnnotationFlattener @Inject constructor(
     }
     
     /**
+     * Color palette for template rendering variants.
+     */
+    private data class TemplatePalette(
+        val background: Int,
+        val primaryLine: Int,
+        val accentLine: Int,
+        val strongLine: Int,
+        val labelText: Int,
+        val redAccent: Int,
+        val sectionFillA: Int,
+        val sectionFillB: Int,
+        val greenBg: Int,
+        val greenLine: Int,
+        val greenAccent: Int,
+        val greenBorder: Int,
+        val creamBg: Int
+    )
+    
+    private fun getPalette(variant: String): TemplatePalette = when (variant) {
+        "OFFWHITE" -> TemplatePalette(
+            background    = android.graphics.Color.rgb(253, 248, 240),
+            primaryLine   = android.graphics.Color.rgb(200, 187, 168),
+            accentLine    = android.graphics.Color.rgb(153, 139, 118),
+            strongLine    = android.graphics.Color.rgb(107, 94, 77),
+            labelText     = android.graphics.Color.rgb(139, 126, 107),
+            redAccent     = android.graphics.Color.rgb(184, 92, 58),
+            sectionFillA  = android.graphics.Color.rgb(240, 232, 216),
+            sectionFillB  = android.graphics.Color.rgb(232, 220, 200),
+            greenBg       = android.graphics.Color.rgb(245, 240, 228),
+            greenLine     = android.graphics.Color.rgb(190, 178, 155),
+            greenAccent   = android.graphics.Color.rgb(155, 143, 120),
+            greenBorder   = android.graphics.Color.rgb(130, 118, 95),
+            creamBg       = android.graphics.Color.rgb(248, 242, 230)
+        )
+        "DARK" -> TemplatePalette(
+            background    = android.graphics.Color.rgb(26, 26, 30),
+            primaryLine   = android.graphics.Color.rgb(58, 58, 66),
+            accentLine    = android.graphics.Color.rgb(80, 80, 88),
+            strongLine    = android.graphics.Color.rgb(106, 106, 114),
+            labelText     = android.graphics.Color.rgb(106, 106, 114),
+            redAccent     = android.graphics.Color.rgb(139, 58, 58),
+            sectionFillA  = android.graphics.Color.rgb(37, 37, 40),
+            sectionFillB  = android.graphics.Color.rgb(32, 32, 36),
+            greenBg       = android.graphics.Color.rgb(26, 30, 26),
+            greenLine     = android.graphics.Color.rgb(50, 65, 50),
+            greenAccent   = android.graphics.Color.rgb(65, 85, 65),
+            greenBorder   = android.graphics.Color.rgb(45, 70, 45),
+            creamBg       = android.graphics.Color.rgb(30, 30, 34)
+        )
+        else -> TemplatePalette( // REGULAR
+            background    = android.graphics.Color.WHITE,
+            primaryLine   = android.graphics.Color.rgb(210, 210, 210),
+            accentLine    = android.graphics.Color.rgb(166, 166, 166),
+            strongLine    = android.graphics.Color.rgb(77, 77, 89),
+            labelText     = android.graphics.Color.rgb(153, 153, 153),
+            redAccent     = android.graphics.Color.rgb(204, 51, 51),
+            sectionFillA  = android.graphics.Color.rgb(242, 242, 247),
+            sectionFillB  = android.graphics.Color.rgb(235, 242, 250),
+            greenBg       = android.graphics.Color.rgb(240, 250, 240),
+            greenLine     = android.graphics.Color.rgb(179, 217, 179),
+            greenAccent   = android.graphics.Color.rgb(115, 179, 115),
+            greenBorder   = android.graphics.Color.rgb(77, 140, 77),
+            creamBg       = android.graphics.Color.rgb(254, 252, 247)
+        )
+    }
+    
+    /**
+     * Extracts the base template name and variant suffix from a full template name.
+     * e.g. "LINED_DARK" -> Pair("LINED", "DARK"), "GRID" -> Pair("GRID", "REGULAR")
+     */
+    private fun parseTemplateName(fullName: String): Pair<String, String> {
+        val upper = fullName.uppercase()
+        return when {
+            upper.endsWith("_OFFWHITE") -> Pair(upper.removeSuffix("_OFFWHITE"), "OFFWHITE")
+            upper.endsWith("_DARK") -> Pair(upper.removeSuffix("_DARK"), "DARK")
+            else -> Pair(upper, "REGULAR")
+        }
+    }
+    
+    /**
      * Draws a template pattern on a canvas.
-     * MUST match the templates in MuPdfRenderer for consistency.
+     * Supports color variants via suffix: LINED, LINED_OFFWHITE, LINED_DARK
      */
     private fun drawTemplate(
         canvas: Canvas,
@@ -727,273 +807,281 @@ class PdfAnnotationFlattener @Inject constructor(
         width: Float,
         height: Float
     ) {
-        val paint = Paint().apply {
-            isAntiAlias = true
-        }
+        val (baseName, variant) = parseTemplateName(templateName)
+        val p = getPalette(variant)
+        val paint = Paint().apply { isAntiAlias = true }
         
-        when (templateName.uppercase()) {
+        when (baseName) {
             "BLANK" -> {
-                // White background
-                paint.color = android.graphics.Color.WHITE
+                paint.color = p.background
                 paint.style = Paint.Style.FILL
                 canvas.drawRect(0f, 0f, width, height, paint)
             }
             "LINED" -> {
-                // Cream background
-                paint.color = android.graphics.Color.rgb(254, 252, 247)
+                paint.color = if (variant == "REGULAR") p.creamBg else p.background
                 paint.style = Paint.Style.FILL
                 canvas.drawRect(0f, 0f, width, height, paint)
-                
-                val lineSpacing = 24f
-                val marginLeft = 72f
-                val marginTop = 85f
-                val marginBottom = 50f
-                
-                // Red margin line
-                paint.color = android.graphics.Color.rgb(204, 51, 51)
-                paint.strokeWidth = 0.75f
-                paint.style = Paint.Style.STROKE
+                val lineSpacing = 24f; val marginLeft = 72f; val marginTop = 85f; val marginBottom = 50f
+                paint.color = p.redAccent; paint.strokeWidth = 0.75f; paint.style = Paint.Style.STROKE
                 canvas.drawLine(marginLeft - 8f, height - marginTop, marginLeft - 8f, marginBottom, paint)
-                
-                // Blue ruled lines
-                paint.color = android.graphics.Color.rgb(153, 187, 217)
+                paint.color = if (variant == "REGULAR") android.graphics.Color.rgb(153, 187, 217) else p.primaryLine
                 paint.strokeWidth = 0.5f
                 var y = height - marginTop - lineSpacing
-                while (y > marginBottom) {
-                    canvas.drawLine(marginLeft, y, width - 40f, y, paint)
-                    y -= lineSpacing
-                }
+                while (y > marginBottom) { canvas.drawLine(marginLeft, y, width - 40f, y, paint); y -= lineSpacing }
             }
             "GRID" -> {
-                // White background
-                paint.color = android.graphics.Color.WHITE
-                paint.style = Paint.Style.FILL
+                paint.color = p.background; paint.style = Paint.Style.FILL
                 canvas.drawRect(0f, 0f, width, height, paint)
-                
-                val smallGrid = 14.17f // 5mm
-                val largeGrid = 28.35f // 10mm
-                val margin = 30f
-                
-                // Minor grid
-                paint.color = android.graphics.Color.rgb(210, 210, 210)
-                paint.strokeWidth = 0.25f
-                paint.style = Paint.Style.STROKE
-                
-                var x = margin
-                while (x <= width - margin) {
-                    canvas.drawLine(x, margin, x, height - margin, paint)
-                    x += smallGrid
-                }
-                var y = margin
-                while (y <= height - margin) {
-                    canvas.drawLine(margin, y, width - margin, y, paint)
-                    y += smallGrid
-                }
-                
-                // Major grid
-                paint.color = android.graphics.Color.rgb(166, 166, 166)
-                paint.strokeWidth = 0.5f
-                x = margin
-                while (x <= width - margin) {
-                    canvas.drawLine(x, margin, x, height - margin, paint)
-                    x += largeGrid
-                }
-                y = margin
-                while (y <= height - margin) {
-                    canvas.drawLine(margin, y, width - margin, y, paint)
-                    y += largeGrid
-                }
+                val smallGrid = 14.17f; val largeGrid = 28.35f; val margin = 30f
+                paint.color = p.primaryLine; paint.strokeWidth = 0.25f; paint.style = Paint.Style.STROKE
+                var x = margin; while (x <= width - margin) { canvas.drawLine(x, margin, x, height - margin, paint); x += smallGrid }
+                var y = margin; while (y <= height - margin) { canvas.drawLine(margin, y, width - margin, y, paint); y += smallGrid }
+                paint.color = p.accentLine; paint.strokeWidth = 0.5f
+                x = margin; while (x <= width - margin) { canvas.drawLine(x, margin, x, height - margin, paint); x += largeGrid }
+                y = margin; while (y <= height - margin) { canvas.drawLine(margin, y, width - margin, y, paint); y += largeGrid }
             }
             "DOTTED" -> {
-                // White background
-                paint.color = android.graphics.Color.WHITE
-                paint.style = Paint.Style.FILL
+                paint.color = p.background; paint.style = Paint.Style.FILL
                 canvas.drawRect(0f, 0f, width, height, paint)
-                
-                val dotSpacing = 14.17f
-                val margin = 35f
-                
-                paint.color = android.graphics.Color.rgb(140, 140, 140)
-                paint.style = Paint.Style.FILL
-                
+                val dotSpacing = 14.17f; val margin = 35f
+                paint.color = p.accentLine; paint.style = Paint.Style.FILL
                 var x = margin + dotSpacing
                 while (x < width - margin) {
                     var y = margin + dotSpacing
-                    while (y < height - margin) {
-                        canvas.drawCircle(x, y, 0.6f, paint)
-                        y += dotSpacing
-                    }
+                    while (y < height - margin) { canvas.drawCircle(x, y, 0.6f, paint); y += dotSpacing }
                     x += dotSpacing
                 }
             }
             "CORNELL" -> {
-                val cueColumnWidth = 150f
-                val summaryHeight = 130f
-                val topMargin = 70f
-                val sideMargin = 25f
-                
-                // Background - light cream
-                paint.color = android.graphics.Color.rgb(252, 250, 245)
-                paint.style = Paint.Style.FILL
-                canvas.drawRect(0f, 0f, width, height, paint)
-                
-                // Summary section background (light blue)
-                paint.color = android.graphics.Color.rgb(235, 242, 250)
+                val cueColumnWidth = 150f; val summaryHeight = 130f; val topMargin = 70f; val sideMargin = 25f
+                paint.color = if (variant == "REGULAR") p.creamBg else p.background
+                paint.style = Paint.Style.FILL; canvas.drawRect(0f, 0f, width, height, paint)
+                paint.color = p.sectionFillB
                 canvas.drawRect(sideMargin, sideMargin, width - sideMargin, summaryHeight + sideMargin, paint)
-                
-                // Cue column background (light warm)
-                paint.color = android.graphics.Color.rgb(250, 245, 235)
+                paint.color = if (variant == "REGULAR") android.graphics.Color.rgb(250, 245, 235) else p.sectionFillA
                 canvas.drawRect(sideMargin, summaryHeight + sideMargin, sideMargin + cueColumnWidth, height - topMargin, paint)
-                
-                // Header background
-                paint.color = android.graphics.Color.rgb(242, 242, 247)
+                paint.color = p.sectionFillA
                 canvas.drawRect(sideMargin, height - topMargin, width - sideMargin, height - sideMargin, paint)
-                
-                // Main section dividers
-                paint.color = android.graphics.Color.rgb(77, 77, 89)
-                paint.strokeWidth = 1.5f
-                paint.style = Paint.Style.STROKE
-                
-                // Outer border
+                paint.color = p.strongLine; paint.strokeWidth = 1.5f; paint.style = Paint.Style.STROKE
                 canvas.drawRect(sideMargin, sideMargin, width - sideMargin, height - sideMargin, paint)
-                
-                // Vertical divider
                 val cueRight = sideMargin + cueColumnWidth
                 canvas.drawLine(cueRight, summaryHeight + sideMargin, cueRight, height - topMargin, paint)
-                
-                // Horizontal dividers
                 canvas.drawLine(sideMargin, summaryHeight + sideMargin, width - sideMargin, summaryHeight + sideMargin, paint)
                 canvas.drawLine(sideMargin, height - topMargin, width - sideMargin, height - topMargin, paint)
-                
-                // Faint ruled lines
-                paint.color = android.graphics.Color.rgb(191, 199, 209)
-                paint.strokeWidth = 0.4f
-                val lineSpacing = 24f
-                var y = height - topMargin - lineSpacing
+                paint.color = p.primaryLine; paint.strokeWidth = 0.4f
+                val lineSpacing = 24f; var y = height - topMargin - lineSpacing
                 while (y > summaryHeight + sideMargin + 15f) {
-                    canvas.drawLine(cueRight + 10f, y, width - sideMargin - 10f, y, paint)
-                    y -= lineSpacing
+                    canvas.drawLine(cueRight + 10f, y, width - sideMargin - 10f, y, paint); y -= lineSpacing
                 }
             }
             "ISOMETRIC" -> {
-                // White background
-                paint.color = android.graphics.Color.WHITE
-                paint.style = Paint.Style.FILL
+                paint.color = p.background; paint.style = Paint.Style.FILL
                 canvas.drawRect(0f, 0f, width, height, paint)
-                
-                val spacing = 17f
-                val rowHeight = spacing * 0.866f
-                val margin = 30f
-                
-                paint.color = android.graphics.Color.rgb(128, 128, 140)
-                paint.style = Paint.Style.FILL
-                
-                var row = 0
-                var y = margin
+                val spacing = 17f; val rowHeight = spacing * 0.866f; val margin = 30f
+                paint.color = p.accentLine; paint.style = Paint.Style.FILL
+                var row = 0; var y = margin
                 while (y < height - margin) {
                     val xOffset = if (row % 2 == 0) 0f else spacing / 2f
                     var x = margin + xOffset
-                    while (x < width - margin) {
-                        canvas.drawCircle(x, y, 0.55f, paint)
-                        x += spacing
-                    }
-                    y += rowHeight
-                    row++
+                    while (x < width - margin) { canvas.drawCircle(x, y, 0.55f, paint); x += spacing }
+                    y += rowHeight; row++
                 }
             }
             "MUSIC" -> {
-                // Cream background
-                paint.color = android.graphics.Color.rgb(254, 253, 249)
-                paint.style = Paint.Style.FILL
-                canvas.drawRect(0f, 0f, width, height, paint)
-                
-                val staffLineSpacing = 7f
-                val staffHeight = staffLineSpacing * 4
-                val staffGap = 55f
-                val margin = 55f
-                val clefMargin = 30f
-                
-                paint.color = android.graphics.Color.rgb(38, 38, 38)
-                paint.strokeWidth = 0.4f
-                paint.style = Paint.Style.STROKE
-                
+                paint.color = if (variant == "REGULAR") p.creamBg else p.background
+                paint.style = Paint.Style.FILL; canvas.drawRect(0f, 0f, width, height, paint)
+                val staffLineSpacing = 7f; val staffHeight = staffLineSpacing * 4
+                val staffGap = 55f; val margin = 55f; val clefMargin = 30f
+                paint.color = p.strongLine; paint.strokeWidth = 0.4f; paint.style = Paint.Style.STROKE
                 var staffTop = height - margin
                 while (staffTop - staffHeight > margin) {
-                    // Draw 5 lines for one staff
                     for (i in 0 until 5) {
                         val lineY = staffTop - (i * staffLineSpacing)
                         canvas.drawLine(margin + clefMargin, lineY, width - margin, lineY, paint)
                     }
-                    
-                    // Bar lines
                     paint.strokeWidth = 0.8f
                     canvas.drawLine(margin + clefMargin, staffTop, margin + clefMargin, staffTop - staffHeight, paint)
                     canvas.drawLine(width - margin, staffTop, width - margin, staffTop - staffHeight, paint)
                     paint.strokeWidth = 0.4f
-                    
                     staffTop -= (staffHeight + staffGap)
                 }
             }
             "ENGINEERING" -> {
-                // Light green background
-                paint.color = android.graphics.Color.rgb(240, 250, 240)
-                paint.style = Paint.Style.FILL
+                paint.color = p.greenBg; paint.style = Paint.Style.FILL
                 canvas.drawRect(0f, 0f, width, height, paint)
-                
-                val smallGrid = 2.835f // 1mm
-                val mediumGrid = smallGrid * 5 // 5mm
-                val largeGrid = smallGrid * 10 // 10mm
-                val margin = 28f
-                
-                // Medium grid (5mm)
-                paint.color = android.graphics.Color.rgb(179, 217, 179)
-                paint.strokeWidth = 0.2f
-                paint.style = Paint.Style.STROKE
-                
-                var x = margin
-                while (x <= width - margin) {
-                    canvas.drawLine(x, margin, x, height - margin, paint)
-                    x += mediumGrid
-                }
-                var y = margin
-                while (y <= height - margin) {
-                    canvas.drawLine(margin, y, width - margin, y, paint)
-                    y += mediumGrid
-                }
-                
-                // Major grid (10mm)
-                paint.color = android.graphics.Color.rgb(115, 179, 115)
-                paint.strokeWidth = 0.5f
-                x = margin
-                while (x <= width - margin) {
-                    canvas.drawLine(x, margin, x, height - margin, paint)
-                    x += largeGrid
-                }
-                y = margin
-                while (y <= height - margin) {
-                    canvas.drawLine(margin, y, width - margin, y, paint)
-                    y += largeGrid
-                }
-                
-                // Border
-                paint.color = android.graphics.Color.rgb(77, 140, 77)
-                paint.strokeWidth = 0.8f
+                val smallGrid = 2.835f; val mediumGrid = smallGrid * 5; val largeGrid = smallGrid * 10; val margin = 28f
+                paint.color = p.greenLine; paint.strokeWidth = 0.2f; paint.style = Paint.Style.STROKE
+                var x = margin; while (x <= width - margin) { canvas.drawLine(x, margin, x, height - margin, paint); x += mediumGrid }
+                var y = margin; while (y <= height - margin) { canvas.drawLine(margin, y, width - margin, y, paint); y += mediumGrid }
+                paint.color = p.greenAccent; paint.strokeWidth = 0.5f
+                x = margin; while (x <= width - margin) { canvas.drawLine(x, margin, x, height - margin, paint); x += largeGrid }
+                y = margin; while (y <= height - margin) { canvas.drawLine(margin, y, width - margin, y, paint); y += largeGrid }
+                paint.color = p.greenBorder; paint.strokeWidth = 0.8f
                 canvas.drawRect(margin, margin, width - margin, height - margin, paint)
+            }
+            "TODO" -> {
+                paint.color = p.background; paint.style = Paint.Style.FILL
+                canvas.drawRect(0f, 0f, width, height, paint)
+                val margin = 40f; val lineSpacing = 28f; val checkboxSize = 10f; val checkboxMargin = 55f
+                // Title area
+                paint.color = p.sectionFillA; canvas.drawRect(margin, height - 65f, width - margin, height - margin, paint)
+                paint.color = p.strongLine; paint.strokeWidth = 1f; paint.style = Paint.Style.STROKE
+                canvas.drawLine(margin, height - 65f, width - margin, height - 65f, paint)
+                // Checkbox rows
+                paint.strokeWidth = 0.5f
+                var y = height - 90f
+                while (y > margin) {
+                    // Checkbox square
+                    paint.color = p.accentLine; paint.style = Paint.Style.STROKE; paint.strokeWidth = 0.8f
+                    canvas.drawRect(margin + 5f, y - checkboxSize, margin + 5f + checkboxSize, y, paint)
+                    // Line
+                    paint.color = p.primaryLine; paint.strokeWidth = 0.3f
+                    canvas.drawLine(checkboxMargin, y, width - margin, y, paint)
+                    y -= lineSpacing
+                }
+            }
+            "PLANNER" -> {
+                paint.color = p.background; paint.style = Paint.Style.FILL
+                canvas.drawRect(0f, 0f, width, height, paint)
+                val margin = 35f; val timeColWidth = 60f; val hourHeight = 48f
+                // Header
+                paint.color = p.sectionFillA; canvas.drawRect(margin, height - 65f, width - margin, height - margin, paint)
+                paint.color = p.strongLine; paint.strokeWidth = 1f; paint.style = Paint.Style.STROKE
+                canvas.drawLine(margin, height - 65f, width - margin, height - 65f, paint)
+                // Time column line
+                paint.strokeWidth = 0.5f; paint.color = p.accentLine
+                canvas.drawLine(margin + timeColWidth, margin, margin + timeColWidth, height - 70f, paint)
+                // Hour rows
+                val textPaint = Paint().apply { isAntiAlias = true; color = p.labelText; textSize = 8f }
+                paint.color = p.primaryLine; paint.strokeWidth = 0.3f
+                var y = height - 70f; var hour = 6
+                while (y > margin && hour <= 23) {
+                    canvas.drawLine(margin, y, width - margin, y, paint)
+                    canvas.drawText("${if (hour <= 12) hour else hour - 12}${if (hour < 12) "am" else "pm"}", margin + 5f, y - 5f, textPaint)
+                    // Half-hour dashed line
+                    val halfY = y - hourHeight / 2f
+                    if (halfY > margin) {
+                        paint.color = p.primaryLine; paint.strokeWidth = 0.15f
+                        canvas.drawLine(margin + timeColWidth + 10f, halfY, width - margin, halfY, paint)
+                        paint.strokeWidth = 0.3f; paint.color = p.primaryLine
+                    }
+                    y -= hourHeight; hour++
+                }
+            }
+            "STORYBOARD" -> {
+                paint.color = p.background; paint.style = Paint.Style.FILL
+                canvas.drawRect(0f, 0f, width, height, paint)
+                val margin = 30f; val cols = 2; val rows = 3; val gap = 20f; val captionH = 30f
+                val cellW = (width - 2 * margin - (cols - 1) * gap) / cols
+                val cellH = (height - 2 * margin - rows * captionH - (rows - 1) * gap) / rows
+                paint.style = Paint.Style.STROKE; paint.strokeWidth = 0.8f
+                for (r in 0 until rows) {
+                    for (c in 0 until cols) {
+                        val x = margin + c * (cellW + gap)
+                        val y = height - margin - (r + 1) * (cellH + captionH + gap) + gap
+                        // Frame
+                        paint.color = p.accentLine
+                        canvas.drawRect(x, y, x + cellW, y + cellH, paint)
+                        // Caption lines
+                        paint.color = p.primaryLine; paint.strokeWidth = 0.3f
+                        val lineY1 = y + cellH + captionH * 0.4f
+                        val lineY2 = y + cellH + captionH * 0.8f
+                        canvas.drawLine(x, lineY1, x + cellW, lineY1, paint)
+                        canvas.drawLine(x, lineY2, x + cellW, lineY2, paint)
+                        paint.strokeWidth = 0.8f
+                    }
+                }
+            }
+            "CALLIGRAPHY" -> {
+                paint.color = if (variant == "REGULAR") p.creamBg else p.background
+                paint.style = Paint.Style.FILL; canvas.drawRect(0f, 0f, width, height, paint)
+                val margin = 40f; val setHeight = 48f; val gap = 18f
+                val ascenderRatio = 0.3f; val xHeightRatio = 0.4f; val descenderRatio = 0.3f
+                var y = height - margin
+                while (y - setHeight > margin) {
+                    val baseline = y - setHeight * descenderRatio
+                    val xHeight = baseline - setHeight * xHeightRatio
+                    val ascender = y - setHeight
+                    val descender = y
+                    // Baseline (strong)
+                    paint.color = p.accentLine; paint.strokeWidth = 0.6f; paint.style = Paint.Style.STROKE
+                    canvas.drawLine(margin, baseline, width - margin, baseline, paint)
+                    // X-height (medium dashed feel)
+                    paint.color = p.primaryLine; paint.strokeWidth = 0.4f
+                    canvas.drawLine(margin, xHeight, width - margin, xHeight, paint)
+                    // Ascender & descender (light)
+                    paint.color = p.primaryLine; paint.strokeWidth = 0.2f
+                    canvas.drawLine(margin, ascender, width - margin, ascender, paint)
+                    canvas.drawLine(margin, descender, width - margin, descender, paint)
+                    y -= (setHeight + gap)
+                }
+            }
+            "HEXAGONAL" -> {
+                paint.color = p.background; paint.style = Paint.Style.FILL
+                canvas.drawRect(0f, 0f, width, height, paint)
+                paint.color = p.primaryLine; paint.strokeWidth = 0.4f; paint.style = Paint.Style.STROKE
+                val hexSize = 14f; val margin = 25f
+                val hexW = hexSize * 1.732f; val hexH = hexSize * 2f
+                val rowH = hexH * 0.75f
+                var row = 0; var y = margin
+                while (y < height - margin) {
+                    val xOff = if (row % 2 == 1) hexW / 2f else 0f
+                    var x = margin + xOff
+                    while (x + hexW < width - margin) {
+                        drawHexagon(canvas, paint, x + hexW / 2f, y + hexSize, hexSize)
+                        x += hexW
+                    }
+                    y += rowH; row++
+                }
+            }
+            "FOUR_QUADRANT" -> {
+                paint.color = p.background; paint.style = Paint.Style.FILL
+                canvas.drawRect(0f, 0f, width, height, paint)
+                val margin = 40f; val headerH = 35f
+                // Header
+                paint.color = p.sectionFillA; canvas.drawRect(margin, height - margin - headerH, width - margin, height - margin, paint)
+                // Cross lines
+                val centerX = width / 2f
+                val centerY = (height - margin - headerH + margin) / 2f + margin
+                paint.color = p.strongLine; paint.strokeWidth = 1.2f; paint.style = Paint.Style.STROKE
+                canvas.drawLine(centerX, margin, centerX, height - margin - headerH, paint)
+                canvas.drawLine(margin, centerY, width - margin, centerY, paint)
+                // Border
+                paint.strokeWidth = 0.8f; paint.color = p.accentLine
+                canvas.drawRect(margin, margin, width - margin, height - margin - headerH, paint)
+                // Faint lines in each quadrant
+                paint.color = p.primaryLine; paint.strokeWidth = 0.2f
+                val lineSpacing = 24f
+                var y = centerY - lineSpacing
+                while (y > margin + 5f) { canvas.drawLine(margin + 5f, y, width - margin - 5f, y, paint); y -= lineSpacing }
+                y = centerY + lineSpacing
+                while (y < height - margin - headerH - 5f) { canvas.drawLine(margin + 5f, y, width - margin - 5f, y, paint); y += lineSpacing }
             }
             else -> {
                 // Check if it's a custom template
                 val customTemplate = customTemplateRepository.getCustomTemplateById(templateName)
-                
                 if (customTemplate != null) {
                     drawCustomTemplate(canvas, customTemplate, width, height)
                 } else {
-                    // Default blank white
-                    paint.color = android.graphics.Color.WHITE
-                    paint.style = Paint.Style.FILL
+                    // Default blank
+                    paint.color = p.background; paint.style = Paint.Style.FILL
                     canvas.drawRect(0f, 0f, width, height, paint)
                 }
             }
         }
+    }
+    
+    /** Draws a hexagon centered at (cx, cy) with the given size (center-to-vertex). */
+    private fun drawHexagon(canvas: Canvas, paint: Paint, cx: Float, cy: Float, size: Float) {
+        val path = android.graphics.Path()
+        for (i in 0 until 6) {
+            val angle = Math.toRadians((60.0 * i - 30.0))
+            val px = cx + size * kotlin.math.cos(angle).toFloat()
+            val py = cy + size * kotlin.math.sin(angle).toFloat()
+            if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+        }
+        path.close()
+        canvas.drawPath(path, paint)
     }
     
     /**
